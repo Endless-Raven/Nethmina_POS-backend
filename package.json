@@ -1,0 +1,15 @@
+{
+  "name": "nethmina_pos",
+  "version": "1.0.0",
+  "description": "A Point of Sale system for Nethmina",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Shazna Salman",
+  "license": "ISC",
+  "keywords": [],
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}
