@@ -9,7 +9,6 @@ router.get('/role/:role', getUsersByRole);
 router.get('/storeName/:store_name', getUsersByStoreName);
 
 
-
 router.delete("/:user_id",deleteUser);//delete users
 router.put("/:user_id",updateUser);//update users
 
