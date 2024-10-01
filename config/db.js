@@ -147,4 +147,18 @@ CREATE TABLE `warranties` (
   CONSTRAINT `warranties_ibfk_1` FOREIGN KEY (`product_id`) REFERENCES `products` (`product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `stock` (
+  `stockid` int NOT NULL AUTO_INCREMENT,
+  `store_id` int NOT NULL,
+  `product_id` int NOT NULL,
+  `stock_quantity` int NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`stockid`),
+  KEY `fk_stock_store_id` (`store_id`),
+  KEY `fk_stock_product_id` (`product_id`),
+  CONSTRAINT `fk_stock_product_id` FOREIGN KEY (`product_id`) REFERENCES `products` (`product_id`),
+  CONSTRAINT `fk_stock_store_id` FOREIGN KEY (`store_id`) REFERENCES `stores` (`store_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
  */
