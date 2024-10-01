@@ -8,6 +8,8 @@ const productRoutes = require("./routes/product");
 const stores = require("./routes/stores");
 const userRoutes = require("./routes/users");
 const customerRoutes = require("./routes/customer");
+const cashierRoutes = require("./routes/cashier");
+
 
 
 app.use(cors());
@@ -19,6 +21,7 @@ app.use("/product", productRoutes);
 app.use("/stores", stores);
 app.use("/users", userRoutes);
 app.use("/customers", customerRoutes);
+app.use("/cashiers", cashierRoutes);
 
 
 

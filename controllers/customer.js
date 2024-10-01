@@ -1,5 +1,4 @@
 const db = require("../config/db");
-const bcrypt = require('bcrypt');
 
 // Get all customers
 const getCustomers = async (req, res) => {
