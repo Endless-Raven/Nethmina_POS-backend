@@ -78,7 +78,7 @@ CREATE TABLE `products` (
 
 
 CREATE TABLE `sales` (
-  `sale_id` int NOT NULL,
+  `sale_id` varchar(45) NOT NULL,
   `cashier_id` int NOT NULL,
   `total_amount` decimal(10,2) NOT NULL,
   `sale_date` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
@@ -92,8 +92,8 @@ CREATE TABLE `sales` (
 
 
 CREATE TABLE `sales_items` (
-  `sale_item_id` int NOT NULL AUTO_INCREMENT,
-  `sale_id` int NOT NULL,
+  `sale_item_id` varchar(45) NOT NULL,
+  `sale_id` varchar(45) NOT NULL,
   `product_id` int NOT NULL,
   `item_quantity` varchar(100) DEFAULT NULL,
   `item_price` varchar(100) DEFAULT NULL,
@@ -105,7 +105,6 @@ CREATE TABLE `sales_items` (
   UNIQUE KEY `imei_number_UNIQUE` (`imei_number`),
   KEY `sale_id` (`sale_id`),
   KEY `product_id` (`product_id`),
-  CONSTRAINT `sales_items_ibfk_1` FOREIGN KEY (`sale_id`) REFERENCES `sales` (`sale_id`),
   CONSTRAINT `sales_items_ibfk_2` FOREIGN KEY (`product_id`) REFERENCES `products` (`product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -137,7 +136,7 @@ CREATE TABLE `users` (
 CREATE TABLE `warranties` (
   `warranty_id` int NOT NULL AUTO_INCREMENT,
   `product_id` int NOT NULL,
-  `sale_id` int NOT NULL,
+  `sale_id` varchar(45) NOT NULL,
   `warranty_start_date` date NOT NULL,
   `warranty_end_date` date NOT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
@@ -145,8 +144,7 @@ CREATE TABLE `warranties` (
   PRIMARY KEY (`warranty_id`),
   KEY `product_id` (`product_id`),
   KEY `sale_id` (`sale_id`),
-  CONSTRAINT `warranties_ibfk_1` FOREIGN KEY (`product_id`) REFERENCES `products` (`product_id`),
-  CONSTRAINT `warranties_ibfk_2` FOREIGN KEY (`sale_id`) REFERENCES `sales` (`sale_id`)
+  CONSTRAINT `warranties_ibfk_1` FOREIGN KEY (`product_id`) REFERENCES `products` (`product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
  */
