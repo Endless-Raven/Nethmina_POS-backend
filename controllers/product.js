@@ -134,3 +134,12 @@ module.exports = {
     deleteitem
   };
   
+
+  /*
+  imei number to fetch from an array
+
+  SELECT * FROM products
+  WHERE FIND_IN_SET('12345', imei_number);
+changes can be made if wanted
+
+  */ 
