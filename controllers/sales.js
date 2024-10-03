@@ -185,11 +185,66 @@ const getsales = async (req,res) => {
 
 
   
+
+  
+  const getDailySalesReport = async (req, res) => {
+    const { date } = req.query; // Date will be passed from the frontend in the format 'YYYY-MM-DD'
+  
+    const sql = `
+      SELECT
+        sales.sale_id,
+        sales.sales_person,
+        sales.total_amount,
+        sales.created_at AS sale_date,
+        cashiers.cashier_name,
+        stores.store_name,
+        stores.store_address,
+        stores.store_phone_number,
+        sales_items.product_id,
+        sales_items.item_quantity,
+        sales_items.item_price,
+        sales_items.imei_number,
+        sales_items.discount
+      FROM sales_items
+      INNER JOIN sales ON sales.sale_id = sales_items.sale_id
+      INNER JOIN cashiers ON sales.cashier_id = cashiers.cashier_id
+      INNER JOIN stores ON cashiers.store_id = stores.store_id
+      WHERE DATE(sales.created_at) = ?
+      ORDER BY stores.store_name, sales.sale_id;
+    `;
+  
+    try {
+      // Fetch the sales report based on the provided date
+      const [rows] = await db.query(sql, [date]);
+  
+      if (rows.length === 0) {
+        return res.status(404).json({ message: "No sales found for the given date." });
+      }
+  
+      // Group the results by store
+      const salesReportByStore = rows.reduce((report, sale) => {
+        const { store_name } = sale;
+  
+        if (!report[store_name]) {
+          report[store_name] = [];
+        }
+  
+        // Add the sale to the corresponding store's array
+        report[store_name].push(sale);
+        return report;
+      }, {});
+  
+      return res.status(200).json({ message: "Daily sales report generated successfully.", report: salesReportByStore });
+    } catch (err) {
+      console.error("Error generating daily sales report:", err.message);
+      return res.status(500).json({ message: "Error inside server during daily sales report generation.", err });
+    }
+  };
+  
 module.exports = {
     makesale,
     getsales,
-    getsalebyid
+    getsalebyid,
+    getDailySalesReport
 
   };
-  
-
