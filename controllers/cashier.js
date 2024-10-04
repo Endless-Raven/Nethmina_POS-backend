@@ -166,6 +166,31 @@ const deleteCashier = async (req, res) => {
     }
 };
 
+const getCashiersByStoreId = async (req, res) => {
+    const { store_id } = req.query; // Get store_id from request query parameters
+    
+    const sql = "SELECT cashier_id, cashier_name FROM cashiers WHERE store_id = ?";
+  
+    try {
+      // Execute the SQL query
+      const [rows] = await db.query(sql, [store_id]);
+  
+      // Check if cashiers are found
+      if (rows.length === 0) {
+        return res.status(404).json({ message: "No cashiers found for the given store." });
+      }
+  
+      // Return the fetched cashiers
+      return res.json(rows);
+    } catch (err) {
+      console.error("Error fetching cashiers:", err.message);
+      return res.status(500).json({ message: "Error inside server during fetching cashiers.", err });
+    }
+  };
+  
+
+
+
 module.exports = {
     getCashiers,
     getCashierById,
@@ -175,4 +200,5 @@ module.exports = {
     addCashier,
     updateCashier,
     deleteCashier,
+    getCashiersByStoreId
 };

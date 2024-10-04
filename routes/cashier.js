@@ -8,6 +8,7 @@ const {
     updateCashier,
     deleteCashier,
     getCashiersByStoreName,
+    getCashiersByStoreId
 } = require("../controllers/cashier");
 
 const router = express.Router();
@@ -17,6 +18,7 @@ router.get('/cashierID/:id', getCashierById);//get by ID
 router.get('/email/:email', getCashierByEmail);//get by email
 router.get('/phone/:phone_number', getCashierByPhoneNumber);//get by phone
 router.get('/store/:store_name', getCashiersByStoreName);//get by store name
+router.get('/cashiers', getCashiersByStoreId);//get by store id
 
 router.post("/", addCashier);//aad cashier
 router.put("/:cashier_id", updateCashier);//update cashier
