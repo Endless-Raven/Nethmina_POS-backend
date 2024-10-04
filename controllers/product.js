@@ -98,6 +98,26 @@ const getBrandsByProductType = async (req, res) => {
   }
 }
 
+// Get distinct product models by brand name
+const getProductModelsByBrandName = async (req, res) => {
+  const { brand_name } = req.query; // Get brand_name from request parameters
+  const sql = "SELECT DISTINCT product_model FROM products WHERE brand_name = ?";
+
+  try {
+    console.log(`Fetching product models for brand: ${brand_name}...`);
+    const [rows] = await db.query(sql, [brand_name]);
+
+    // Map the result to an array of product models
+    const productModels = rows.map(row => row.product_model);
+
+    return res.json(productModels);
+  } catch (err) {
+    console.error("Error fetching product models:", err.message);
+    return res.status(500).json({ message: "Error inside server", err });
+  }
+}
+
+
 
 
 //get all items
@@ -205,7 +225,8 @@ module.exports = {
     updateitem,
     deleteitem,
     getProductTypes,
-    getBrandsByProductType
+    getBrandsByProductType,
+    getProductModelsByBrandName
   };
   
 

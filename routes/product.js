@@ -1,6 +1,6 @@
 const express = require("express");
 
-const { additem , getitembyid , getitems , updateitem , deleteitem ,getProductTypes , getBrandsByProductType  } = require("../controllers/product");
+const { additem , getitembyid , getitems , updateitem , deleteitem ,getProductTypes , getBrandsByProductType , getProductModelsByBrandName  } = require("../controllers/product");
 
 
 const router = express.Router();
@@ -13,6 +13,7 @@ router.put("/:product_name",updateitem );
 router.delete("/:product_name",deleteitem);
 router.get("/getProductTypes/get",getProductTypes);
 router.get("/brands/byproducttype",getBrandsByProductType);
+router.get("/models/bybrand",getProductModelsByBrandName);
 
 module.exports = router;
 
