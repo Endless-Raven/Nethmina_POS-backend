@@ -35,8 +35,8 @@ const additem = async (req, res) => {
     } else {
       // Step 4: Product doesn't exist, insert it as a new product
       const sql = `
-        INSERT INTO products (product_name, product_price, warranty_period, imei_number, product_stock, product_type, brand_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO products (product_name, product_price, warranty_period, imei_number, product_stock, product_type , product_model, brand_name)
+        VALUES (?, ?, ?, ?, ?, ?, ? , ?)
       `;
 
       const values = [
@@ -46,6 +46,7 @@ const additem = async (req, res) => {
         req.body.imei_number,
         req.body.product_stock,
         req.body.product_type,
+        req.body.product_model,
         req.body.brand_name
       ];
 
