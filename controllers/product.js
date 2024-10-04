@@ -98,24 +98,46 @@ const getBrandsByProductType = async (req, res) => {
   }
 }
 
-// Get distinct product models by brand name
-// Get all products by brand name
+
 // Get all products by brand name and product type
 const getProductModelsByBrandName = async (req, res) => {
   const { brand_name, product_type } = req.query; // Get brand_name and product_type from request query parameters
-  const sql = "SELECT * FROM products WHERE brand_name = ? AND product_type = ?";
+  const sql = `
+    SELECT 
+      products.*, 
+      GROUP_CONCAT(sales_items.imei_number) AS imei_numbers
+    FROM products
+    LEFT JOIN sales_items ON products.product_id = sales_items.product_id
+    WHERE products.brand_name = ? AND products.product_type = ?
+    GROUP BY products.product_id;`;
 
   try {
     console.log(`Fetching products for brand: ${brand_name} and product type: ${product_type}...`);
     const [rows] = await db.query(sql, [brand_name, product_type]);
 
-    // Return all product details directly
-    return res.json(rows);
+    // Process the rows to convert the concatenated IMEI numbers into an array
+    const processedRows = rows.map(row => {
+      const imeiArray = row.imei_number ? row.imei_number.split(',') : [];
+      
+      // Return a new object without the imei_numbers field
+      const { imei_number, ...rest } = row;
+
+      return {
+        ...rest,
+        imei_number: imeiArray // Replace imei_number with the array
+      };
+    });
+
+    // Return all product details with IMEI numbers as an array
+    return res.json(processedRows);
   } catch (err) {
     console.error("Error fetching products:", err.message);
     return res.status(500).json({ message: "Error inside server", err });
   }
-}
+};
+
+
+
 
 
 
