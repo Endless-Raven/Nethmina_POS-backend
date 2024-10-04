@@ -60,6 +60,19 @@ const additem = async (req, res) => {
 };
 
 
+// Get all distinct product types
+const getProductTypes = async (req, res) => {
+  const sql = "SELECT DISTINCT product_type FROM products";
+  
+  try {
+    console.log("Fetching product types...");
+    const [rows] = await db.query(sql);
+    return res.json(rows);
+  } catch (err) {
+    console.error("Error fetching product types:", err.message);
+    return res.status(500).json({ message: "Error inside server", err });
+  }
+}
 
 
 //get all items
@@ -165,7 +178,8 @@ module.exports = {
     getitembyid,
     getitems,
     updateitem,
-    deleteitem
+    deleteitem,
+    getProductTypes
   };
   
 
