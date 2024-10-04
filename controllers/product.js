@@ -100,13 +100,14 @@ const getBrandsByProductType = async (req, res) => {
 
 // Get distinct product models by brand name
 // Get all products by brand name
+// Get all products by brand name and product type
 const getProductModelsByBrandName = async (req, res) => {
-  const { brand_name } = req.query; // Get brand_name from request query parameters
-  const sql = "SELECT * FROM products WHERE brand_name = ?";
+  const { brand_name, product_type } = req.query; // Get brand_name and product_type from request query parameters
+  const sql = "SELECT * FROM products WHERE brand_name = ? AND product_type = ?";
 
   try {
-    console.log(`Fetching all products for brand: ${brand_name}...`);
-    const [rows] = await db.query(sql, [brand_name]);
+    console.log(`Fetching products for brand: ${brand_name} and product type: ${product_type}...`);
+    const [rows] = await db.query(sql, [brand_name, product_type]);
 
     // Return all product details directly
     return res.json(rows);
@@ -115,6 +116,7 @@ const getProductModelsByBrandName = async (req, res) => {
     return res.status(500).json({ message: "Error inside server", err });
   }
 }
+
 
 
 
