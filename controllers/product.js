@@ -98,6 +98,51 @@ const getBrandsByProductType = async (req, res) => {
   }
 }
 
+const getFilteredProductDetails = async (req, res) => {
+  const { product_name, store_name, brand_name, product_type } = req.body; // Get filter values from request body
+
+  let sql = `
+    SELECT p.*, s.store_name, s.stock_quantity, s.imei_numbers
+    FROM products p
+    JOIN stock s ON p.product_id = s.product_id
+    WHERE 1=1
+  `;
+  const params = [];
+
+  // Dynamically add conditions based on provided filters
+  if (product_name) {
+    sql += " AND p.product_name LIKE ?";
+    params.push(`%${product_name}%`);
+  }
+
+  if (store_name) {
+    sql += " AND s.store_name LIKE ?";
+    params.push(`%${store_name}%`);
+  }
+
+  if (brand_name) {
+    sql += " AND p.brand_name LIKE ?";
+    params.push(`%${brand_name}%`);
+  }
+
+  if (product_type) {
+    sql += " AND p.product_type LIKE ?";
+    params.push(`%${product_type}%`);
+  }
+
+  try {
+    console.log("Fetching filtered product details...");
+    const [rows] = await db.query(sql, params);
+    
+    return res.json(rows);
+  } catch (err) {
+    console.error("Error fetching product details:", err.message);
+    return res.status(500).json({ message: "Error inside server", err });
+  }
+};
+
+
+
 
 // Get all products by brand name and product type
 const getProductModelsByBrandName = async (req, res) => {
@@ -242,6 +287,8 @@ const deleteitem = async (req,res) =>{
 };
 
 
+
+
 module.exports = {
     additem,
     getitembyid,
@@ -250,7 +297,8 @@ module.exports = {
     deleteitem,
     getProductTypes,
     getBrandsByProductType,
-    getProductModelsByBrandName
+    getProductModelsByBrandName,
+    getFilteredProductDetails
   };
   
 
