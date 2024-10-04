@@ -1,4 +1,10 @@
 const db = require("../config/db");
+const PDFDocument = require('pdfkit');
+const nodemailer = require('nodemailer');
+const {addCustomerpera} = require('../controllers/customer');
+const cron = require('node-cron');
+
+
 
  // Step 1: Generate the next ID
 // Function to generate the next ID based on store name
@@ -44,10 +50,18 @@ const getStoreNameByUser = async (user_id) => {
   return rows[0].store_name;
 };
 
+
+
+
+
+
 // Function to make a sale
 const makesale = async (req, res) => {
   try {
-    const { cashier_id, sales_person, total_amount, products, user } = req.body;
+    const { cashier_id, sales_person, total_amount, products, user ,customer_details } = req.body;
+
+     // First, add the customer using the addCustomer function
+     const customer_id = await addCustomerpera(customer_details);  // Assuming the addCustomer function returns a customer_id
 
     // Retrieve store_name based on user (user_id)
     const store_name = await getStoreNameByUser(user);
@@ -179,6 +193,7 @@ const getsales = async (req,res) => {
     return res.status(500).json({ message: "Error inside server", err });
   }
 };
+// const getDailySalesReport = async (req, res) => {
 
 
 
@@ -187,60 +202,229 @@ const getsales = async (req,res) => {
   
 
   
-  const getDailySalesReport = async (req, res) => {
-    const { date } = req.query; // Date will be passed from the frontend in the format 'YYYY-MM-DD'
+  //   const { date } = req.query; // Date will be passed from the frontend in the format 'YYYY-MM-DD'
   
-    const sql = `
-      SELECT
-        sales.sale_id,
-        sales.sales_person,
-        sales.total_amount,
-        sales.created_at AS sale_date,
-        cashiers.cashier_name,
-        stores.store_name,
-        stores.store_address,
-        stores.store_phone_number,
-        sales_items.product_id,
-        sales_items.item_quantity,
-        sales_items.item_price,
-        sales_items.imei_number,
-        sales_items.discount
-      FROM sales_items
-      INNER JOIN sales ON sales.sale_id = sales_items.sale_id
-      INNER JOIN cashiers ON sales.cashier_id = cashiers.cashier_id
-      INNER JOIN stores ON cashiers.store_id = stores.store_id
-      WHERE DATE(sales.created_at) = ?
-      ORDER BY stores.store_name, sales.sale_id;
-    `;
+  //   const sql = `
+  //     SELECT
+  //       sales.sale_id,
+  //       sales.sales_person,
+  //       sales.total_amount,
+  //       sales.created_at AS sale_date,
+  //       cashiers.cashier_name,
+  //       stores.store_name,
+  //       stores.store_address,
+  //       stores.store_phone_number,
+  //       sales_items.product_id,
+  //       sales_items.item_quantity,
+  //       sales_items.item_price,
+  //       sales_items.imei_number,
+  //       sales_items.discount
+  //     FROM sales_items
+  //     INNER JOIN sales ON sales.sale_id = sales_items.sale_id
+  //     INNER JOIN cashiers ON sales.cashier_id = cashiers.cashier_id
+  //     INNER JOIN stores ON cashiers.store_id = stores.store_id
+  //     WHERE DATE(sales.created_at) = ?
+  //     ORDER BY stores.store_name, sales.sale_id;
+  //   `;
   
-    try {
-      // Fetch the sales report based on the provided date
-      const [rows] = await db.query(sql, [date]);
+  //   try {
+  //     // Fetch the sales report based on the provided date
+  //     const [rows] = await db.query(sql, [date]);
   
-      if (rows.length === 0) {
-        return res.status(404).json({ message: "No sales found for the given date." });
-      }
+  //     if (rows.length === 0) {
+  //       return res.status(404).json({ message: "No sales found for the given date." });
+  //     }
   
-      // Group the results by store
-      const salesReportByStore = rows.reduce((report, sale) => {
-        const { store_name } = sale;
+  //     // Group the results by store
+  //     const salesReportByStore = rows.reduce((report, sale) => {
+  //       const { store_name } = sale;
   
-        if (!report[store_name]) {
-          report[store_name] = [];
-        }
+  //       if (!report[store_name]) {
+  //         report[store_name] = [];
+  //       }
   
-        // Add the sale to the corresponding store's array
-        report[store_name].push(sale);
-        return report;
-      }, {});
+  //       // Add the sale to the corresponding store's array
+  //       report[store_name].push(sale);
+  //       return report;
+  //     }, {});
   
-      return res.status(200).json({ message: "Daily sales report generated successfully.", report: salesReportByStore });
-    } catch (err) {
-      console.error("Error generating daily sales report:", err.message);
-      return res.status(500).json({ message: "Error inside server during daily sales report generation.", err });
+  //     return res.status(200).json({ message: "Daily sales report generated successfully.", report: salesReportByStore });
+  //   } catch (err) {
+  //     console.error("Error generating daily sales report:", err.message);
+  //     return res.status(500).json({ message: "Error inside server during daily sales report generation.", err });
+  //   }
+  // };
+  
+// Function to create a PDF report and send via email
+// Function to create a PDF report and send via email
+const getDailySalesReport = async (req, res) => {
+  const { date} = req.query;
+
+  const sql = `
+    SELECT
+      sales.sale_id,
+      sales.sales_person,
+      sales.total_amount,
+      sales.created_at AS sale_date,
+      cashiers.cashier_name,
+      stores.store_name,
+      stores.store_address,
+      stores.store_phone_number,
+      sales_items.product_id,
+      sales_items.item_quantity,
+      sales_items.item_price,
+      sales_items.imei_number,
+      sales_items.discount
+    FROM sales_items
+    INNER JOIN sales ON sales.sale_id = sales_items.sale_id
+    INNER JOIN cashiers ON sales.cashier_id = cashiers.cashier_id
+    INNER JOIN stores ON cashiers.store_id = stores.store_id
+    WHERE DATE(sales.created_at) = ?
+    ORDER BY stores.store_name, sales.sale_id;
+  `;
+
+  try {
+    const [rows] = await db.query(sql, [date]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "No sales found for the given date." });
     }
-  };
+
+    // Group the results by store
+    const salesReportByStore = rows.reduce((report, sale) => {
+      const { store_name } = sale;
+
+      if (!report[store_name]) {
+        report[store_name] = [];
+      }
+
+      report[store_name].push(sale);
+      return report;
+    }, {});
+
+    // Create PDF document
+    const pdfDoc = new PDFDocument();
+    let pdfBuffer = [];
+
+    pdfDoc.on('data', chunk => pdfBuffer.push(chunk));
+    pdfDoc.on('end', () => {
+      const bufferData = Buffer.concat(pdfBuffer);
+      sendEmailWithReport(bufferData, date);
+    });
+
+    // Start adding content to the PDF
+    pdfDoc.fontSize(20).text('Daily Sales Report', { align: 'center' });
+    pdfDoc.fontSize(12).text(`Date: ${date}`, { align: 'center' });
+
+    // Use monospaced font for better alignment
+    pdfDoc.font('Courier');
+
+    // Loop through each store and its sales data
+    Object.keys(salesReportByStore).forEach(store => {
+      const sales = salesReportByStore[store];
+
+      // Add a new page for each store
+      pdfDoc.addPage().fontSize(16).text(`Store: ${store}`, { underline: true });
+      pdfDoc.fontSize(12).text(`Address: ${sales[0].store_address}`);
+      pdfDoc.text(`Phone: ${sales[0].store_phone_number}`);
+
+      // Column headers
+      pdfDoc.moveDown();
+      pdfDoc.text('Sales Person      Total Amount      IMEI           Discount     Sale Date', { underline: true });
+
+      // Initialize total amount for the store
+      let totalAmountForStore = 0;
+
+      // Iterate over the sales and add each sale's data
+      sales.forEach(sale => {
+        const saleDate = new Date(sale.sale_date).toLocaleString(); // Format the date
+        pdfDoc.text(
+          `${sale.sales_person.padEnd(15)}  ` +
+          `${sale.total_amount.toString().padEnd(15)}  ` +
+          `${sale.imei_number.padEnd(15)}  ` +
+          `${sale.discount.toString().padEnd(10)}  ` +
+          `${saleDate}`
+        );
+
+        // Accumulate the total amount for the store
+        totalAmountForStore += parseFloat(sale.total_amount);
+      });
+
+      // Add a line for the total amount for the store
+      pdfDoc.moveDown().fontSize(14).text(`Total Amount for Store: ${totalAmountForStore.toFixed(2)}`, { bold: true });
+
+    });
+
+    pdfDoc.end();
+    return res.status(200).json({ message: "Daily sales report generated and email will be sent." });
+
+  } catch (err) {
+    console.error("Error generating daily sales report:", err.message);
+    return res.status(500).json({ message: "Error inside server during daily sales report generation.", err });
+  }
+};
+
+
+// Function to send the email with the PDF report attached
+const sendEmailWithReport = ( pdfBuffer ,  reportDate) => {
   
+
+  const transporter = nodemailer.createTransport({
+      service: 'gmail', // Use your email service provider
+      host: "smtp.gmail.email",
+      port: 465,
+      secure: true, // true for port 465, false for other ports    
+      auth: {
+          user:  process.env.EMAIL,
+          pass: process.env.EMAIL_PASS , // Use environment variables for sensitive data
+      },
+  });
+const fileName = `daily_sales_report_${reportDate}.pdf`;
+  const mailOptions = {
+    
+      from: process.env.EMAIL,
+      to: process.env.recipientEmail,
+      subject: 'Daily Sales Report',
+      text: 'Please find attached the daily sales report.',
+      attachments: [
+          {
+              filename:fileName,
+              content: pdfBuffer,
+              contentType: 'application/pdf',
+          },
+      ],
+  };
+
+  transporter.sendMail(mailOptions, (err, info) => {
+      if (err) {
+          console.error('Error sending email:', err.message);
+      } else {
+          console.log('Email sent:', info.response);
+      }
+  });
+};
+
+// Schedule the job to run every day at 11 PM
+cron.schedule('27 13 * * *', async () => { // Runs every day at 11 PM
+  const date = new Date().toISOString().split('T')[0]; // Get today's date in 'YYYY-MM-DD' format
+  const email = process.env.EMAIL; // Replace with the actual email you want to send to
+
+  // Create mock request and response objects
+  const req = { query: { date, email } };
+  const res = {
+      status: (statusCode) => ({
+          json: (responseBody) => console.log(`Response: ${statusCode}`, responseBody),
+      }),
+  };
+
+  try {
+      await getDailySalesReport(req, res);
+  } catch (error) {
+      console.error('Error executing daily sales report cron job:', error);
+  }
+});
+
+
 module.exports = {
     makesale,
     getsales,
