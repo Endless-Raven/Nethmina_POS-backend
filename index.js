@@ -9,6 +9,8 @@ const stores = require("./routes/stores");
 const userRoutes = require("./routes/users");
 const customerRoutes = require("./routes/customer");
 const cashierRoutes = require("./routes/cashier");
+const warrantyRoutes = require("./routes/warranty");
+const stockRoutes = require("./routes/stock");
 
 
 
@@ -22,6 +24,8 @@ app.use("/stores", stores);
 app.use("/users", userRoutes);
 app.use("/customers", customerRoutes);
 app.use("/cashiers", cashierRoutes);
+app.use("/warranty", warrantyRoutes);
+app.use("/stock", stockRoutes);
 
 
 
