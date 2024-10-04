@@ -1,13 +1,45 @@
 const db = require("../config/db");
 
 //add item
-const additem = async (req,res) =>{
-    console.log("Request body",req.body);
+const additem = async (req, res) => {
+  console.log("Request body", req.body);
 
-    const sql = ` INSERT INTO products ( product_name , product_price  , warranty_period , imei_number ,product_stock ,product_type,brand_name )
-     VALUES (?, ? , ? , ? , ? ,?,?)`;
+  // Step 1: Check if the product already exists by product_name
+  const checkProductQuery = `SELECT imei_number, product_stock FROM products WHERE product_name = ?`;
+  
+  try {
+    const [product] = await db.query(checkProductQuery, [req.body.product_name]);
+    
+    if (product.length > 0) {
+      // Step 2: Product exists, check IMEI number
+      const existingImeiNumbers = product[0].imei_number ? product[0].imei_number.split(",") : [];
 
-     const values = [
+      if (existingImeiNumbers.includes(req.body.imei_number)) {
+        // If IMEI number already exists, return a message and don't add the product
+        return res.status(400).json({ message: "Product and IMEI number already exist." });
+      } else {
+        // Step 3: IMEI number is new, append it to the existing list and update the stock
+        const newImeiNumbers = [...existingImeiNumbers, req.body.imei_number];
+        const updatedImeiNumbers = newImeiNumbers.join(",");
+
+        const updateProductQuery = `
+          UPDATE products
+          SET imei_number = ?, product_stock = product_stock + ?
+          WHERE product_name = ?;
+        `;
+        
+        await db.query(updateProductQuery, [updatedImeiNumbers, req.body.product_stock, req.body.product_name]);
+
+        return res.status(200).json({ message: "IMEI number added and stock updated for existing product.", updatedImeiNumbers });
+      }
+    } else {
+      // Step 4: Product doesn't exist, insert it as a new product
+      const sql = `
+        INSERT INTO products (product_name, product_price, warranty_period, imei_number, product_stock, product_type, brand_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `;
+
+      const values = [
         req.body.product_name,
         req.body.product_price,
         req.body.waranty_period,
@@ -15,17 +47,19 @@ const additem = async (req,res) =>{
         req.body.product_stock,
         req.body.product_type,
         req.body.brand_name
+      ];
 
+      const [result] = await db.query(sql, values);
 
-     ]
-  try{   const [result] = await db.query(sql, values);
-    return res.status(200).json({ message: "Product added successfully.", result });
+      return res.status(200).json({ message: "New product added successfully.", result });
+    }
   } catch (err) {
     console.error("Error adding Product:", err.message);
     return res.status(500).json({ message: "Error inside server.", err });
   }
+};
 
-}
+
 
 
 //get all items
