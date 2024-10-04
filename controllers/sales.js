@@ -78,47 +78,47 @@ const makesale = async (req, res) => {
       WHERE product_id = ? AND product_stock >= ?;
     `;
 
-    // New query for updating the stock table
+    // Query for updating the stock table
     const updateStockQuery = `
       UPDATE stock
-      SET stock_quantity = stock_quantity - ?
-      WHERE store_id = ? AND product_id = ?;
+      SET stock_quantity = stock_quantity - ?, imei_numbers = ?
+      WHERE store_name = ? AND product_id = ? AND stock_quantity >= ?;
     `;
 
-    // Retrieve store_id based on store_name
-    const [storeResult] = await db.query("SELECT store_id FROM stores WHERE store_name = ?", [store_name]);
-    const store_id = storeResult[0]?.store_id;
-
-    if (!store_id) {
-      return res.status(404).json({ message: "Store not found." });
-    }
-
+    // Loop through each product to process the sale
     for (const product of products) {
       const { product_id, item_quantity, item_price, imei_number, discount } = product;
 
       try {
-        // Insert into the sales_items table
+        // Insert into sales_items table
         await db.query(salesItemQuery, [sales_id, product_id, item_quantity, item_price, imei_number, discount]);
 
-        // Fetch current IMEI numbers
+        // Fetch current IMEI numbers from the products table
         const [currentImeiResult] = await db.query("SELECT imei_number FROM products WHERE product_id = ?", [product_id]);
         const currentImeiNumbers = currentImeiResult[0]?.imei_number.split(",") || [];
 
-        // Remove the sold IMEI number from the array
+        // Remove the sold IMEI number from the list
         const updatedImeiNumbers = currentImeiNumbers.filter(imei => imei !== imei_number).join(",");
 
-        // Update stock and IMEI numbers in the products table
+        // Update stock and IMEI in the products table
         const [productStockUpdated] = await db.query(updateProductStockAndImeiQuery, [item_quantity, updatedImeiNumbers, product_id, item_quantity]);
 
         if (productStockUpdated.affectedRows === 0) {
           throw new Error(`Insufficient product stock for product ${product_id}.`);
         }
 
-        // Update stock_quantity in the stock table
-        const [stockUpdated] = await db.query(updateStockQuery, [item_quantity, store_id, product_id]);
+        // Fetch current IMEI numbers from the stock table
+        const [currentStockImeiResult] = await db.query("SELECT imei_numbers FROM stock WHERE store_name = ? AND product_id = ?", [store_name, product_id]);
+        const currentStockImeiNumbers = currentStockImeiResult[0]?.imei_numbers.split(",") || [];
+
+        // Remove the sold IMEI number from stock's IMEI list
+        const updatedStockImeiNumbers = currentStockImeiNumbers.filter(imei => imei !== imei_number).join(",");
+
+        // Update stock_quantity and IMEI in the stock table
+        const [stockUpdated] = await db.query(updateStockQuery, [item_quantity, updatedStockImeiNumbers, store_name, product_id, item_quantity]);
 
         if (stockUpdated.affectedRows === 0) {
-          throw new Error(`Failed to update stock for product ${product_id} in store ${store_id}.`);
+          throw new Error(`Failed to update stock for product ${product_id} in store ${store_name}.`);
         }
 
       } catch (err) {
@@ -134,6 +134,7 @@ const makesale = async (req, res) => {
     return res.status(500).json({ message: "Error inside server during sales processing.", err });
   }
 };
+
 
 
 
@@ -184,11 +185,66 @@ const getsales = async (req,res) => {
 
 
   
+
+  
+  const getDailySalesReport = async (req, res) => {
+    const { date } = req.query; // Date will be passed from the frontend in the format 'YYYY-MM-DD'
+  
+    const sql = `
+      SELECT
+        sales.sale_id,
+        sales.sales_person,
+        sales.total_amount,
+        sales.created_at AS sale_date,
+        cashiers.cashier_name,
+        stores.store_name,
+        stores.store_address,
+        stores.store_phone_number,
+        sales_items.product_id,
+        sales_items.item_quantity,
+        sales_items.item_price,
+        sales_items.imei_number,
+        sales_items.discount
+      FROM sales_items
+      INNER JOIN sales ON sales.sale_id = sales_items.sale_id
+      INNER JOIN cashiers ON sales.cashier_id = cashiers.cashier_id
+      INNER JOIN stores ON cashiers.store_id = stores.store_id
+      WHERE DATE(sales.created_at) = ?
+      ORDER BY stores.store_name, sales.sale_id;
+    `;
+  
+    try {
+      // Fetch the sales report based on the provided date
+      const [rows] = await db.query(sql, [date]);
+  
+      if (rows.length === 0) {
+        return res.status(404).json({ message: "No sales found for the given date." });
+      }
+  
+      // Group the results by store
+      const salesReportByStore = rows.reduce((report, sale) => {
+        const { store_name } = sale;
+  
+        if (!report[store_name]) {
+          report[store_name] = [];
+        }
+  
+        // Add the sale to the corresponding store's array
+        report[store_name].push(sale);
+        return report;
+      }, {});
+  
+      return res.status(200).json({ message: "Daily sales report generated successfully.", report: salesReportByStore });
+    } catch (err) {
+      console.error("Error generating daily sales report:", err.message);
+      return res.status(500).json({ message: "Error inside server during daily sales report generation.", err });
+    }
+  };
+  
 module.exports = {
     makesale,
     getsales,
-    getsalebyid
+    getsalebyid,
+    getDailySalesReport
 
   };
-  
-
