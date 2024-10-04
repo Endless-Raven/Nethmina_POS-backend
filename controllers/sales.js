@@ -87,8 +87,8 @@ const makesale = async (req, res) => {
 
     // Loop through each product to process the sale
     for (const product of products) {
-      const { product_id, item_quantity, item_price, imei_number, discount } = product;
-
+      const { product_id, item_quantity, item_price, serial_number, discount } = product;
+      const imei_number = serial_number;
       try {
         // Insert into sales_items table (null if no imei_number)
         await db.query(salesItemQuery, [
