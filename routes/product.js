@@ -6,15 +6,18 @@ const { additem , getitembyid , getitems , updateitem , deleteitem ,getProductTy
 const router = express.Router();
 
 
-router.post("/",additem );
-router.get("/", getitems );
-router.get("/:product_name",getitembyid );
-router.put("/:product_name",updateitem );
-router.delete("/:product_name",deleteitem);
-router.get("/getProductTypes/get",getProductTypes);
-router.get("/brands/byproducttype",getBrandsByProductType);
-router.get("/models/bybrand",getProductModelsByBrandName);
-router.get("/getFilteredProductDetails/get",getFilteredProductDetails);
+router.post("/",additem ); //add item
+router.get("/", getitems );//get items
+
+router.get("/:product_name",getitembyid );// get item by id
+router.put("/:product_name",updateitem ); //update item details 
+router.delete("/:product_name",deleteitem); //delete item
+
+router.get("/getProductTypes/get",getProductTypes); //get product type list for POS
+router.get("/brands/byproducttype",getBrandsByProductType); //get brand list for POS
+router.get("/models/bybrand",getProductModelsByBrandName); //get models list for POS
+
+router.get("/getFilteredProductDetails/get",getFilteredProductDetails); //get products filterd for inventory
 
 
 

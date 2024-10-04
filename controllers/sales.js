@@ -72,16 +72,16 @@ const makesale = async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?);
     `;
 
-    const updateProductStockAndImeiQuery = `
+    const updateProductStockQuery = `
       UPDATE products
-      SET product_stock = product_stock - ?, imei_number = ?
+      SET product_stock = product_stock - ?
       WHERE product_id = ? AND product_stock >= ?;
     `;
 
     // Query for updating the stock table
     const updateStockQuery = `
       UPDATE stock
-      SET stock_quantity = stock_quantity - ?, imei_numbers = ?
+      SET stock_quantity = stock_quantity - ?
       WHERE store_name = ? AND product_id = ? AND stock_quantity >= ?;
     `;
 
@@ -90,32 +90,58 @@ const makesale = async (req, res) => {
       const { product_id, item_quantity, item_price, imei_number, discount } = product;
 
       try {
-        // Insert into sales_items table
-        await db.query(salesItemQuery, [sales_id, product_id, item_quantity, item_price, imei_number, discount]);
+        // Insert into sales_items table (null if no imei_number)
+        await db.query(salesItemQuery, [
+          sales_id,
+          product_id,
+          item_quantity,
+          item_price,
+          imei_number || null, // Handle cases where imei_number may be null
+          discount
+        ]);
 
-        // Fetch current IMEI numbers from the products table
-        const [currentImeiResult] = await db.query("SELECT imei_number FROM products WHERE product_id = ?", [product_id]);
-        const currentImeiNumbers = currentImeiResult[0]?.imei_number.split(",") || [];
-
-        // Remove the sold IMEI number from the list
-        const updatedImeiNumbers = currentImeiNumbers.filter(imei => imei !== imei_number).join(",");
-
-        // Update stock and IMEI in the products table
-        const [productStockUpdated] = await db.query(updateProductStockAndImeiQuery, [item_quantity, updatedImeiNumbers, product_id, item_quantity]);
+        // Update product stock
+        const [productStockUpdated] = await db.query(updateProductStockQuery, [item_quantity, product_id, item_quantity]);
 
         if (productStockUpdated.affectedRows === 0) {
           throw new Error(`Insufficient product stock for product ${product_id}.`);
         }
 
-        // Fetch current IMEI numbers from the stock table
-        const [currentStockImeiResult] = await db.query("SELECT imei_numbers FROM stock WHERE store_name = ? AND product_id = ?", [store_name, product_id]);
-        const currentStockImeiNumbers = currentStockImeiResult[0]?.imei_numbers.split(",") || [];
+        // If an IMEI number is provided, update the IMEI-related data
+        if (imei_number) {
+          // Fetch current IMEI numbers from the products table
+          const [currentImeiResult] = await db.query("SELECT imei_number FROM products WHERE product_id = ?", [product_id]);
+          const currentImeiNumbers = currentImeiResult[0]?.imei_number.split(",") || [];
 
-        // Remove the sold IMEI number from stock's IMEI list
-        const updatedStockImeiNumbers = currentStockImeiNumbers.filter(imei => imei !== imei_number).join(",");
+          // Remove the sold IMEI number from the list
+          const updatedImeiNumbers = currentImeiNumbers.filter(imei => imei !== imei_number).join(",");
 
-        // Update stock_quantity and IMEI in the stock table
-        const [stockUpdated] = await db.query(updateStockQuery, [item_quantity, updatedStockImeiNumbers, store_name, product_id, item_quantity]);
+          // Update IMEI in the products table
+          const updateProductImeiQuery = `
+            UPDATE products
+            SET imei_number = ?
+            WHERE product_id = ?;
+          `;
+          await db.query(updateProductImeiQuery, [updatedImeiNumbers, product_id]);
+
+          // Fetch current IMEI numbers from the stock table
+          const [currentStockImeiResult] = await db.query("SELECT imei_numbers FROM stock WHERE store_name = ? AND product_id = ?", [store_name, product_id]);
+          const currentStockImeiNumbers = currentStockImeiResult[0]?.imei_numbers.split(",") || [];
+
+          // Remove the sold IMEI number from stock's IMEI list
+          const updatedStockImeiNumbers = currentStockImeiNumbers.filter(imei => imei !== imei_number).join(",");
+
+          // Update stock IMEI in the stock table
+          const updateStockImeiQuery = `
+            UPDATE stock
+            SET imei_numbers = ?
+            WHERE store_name = ? AND product_id = ?;
+          `;
+          await db.query(updateStockImeiQuery, [updatedStockImeiNumbers, store_name, product_id]);
+        }
+
+        // Update the stock table for quantity only (for all products, whether IMEI exists or not)
+        const [stockUpdated] = await db.query(updateStockQuery, [item_quantity, store_name, product_id, item_quantity]);
 
         if (stockUpdated.affectedRows === 0) {
           throw new Error(`Failed to update stock for product ${product_id} in store ${store_name}.`);

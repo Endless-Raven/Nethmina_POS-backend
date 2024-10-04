@@ -6,10 +6,11 @@ const router = express.Router();
 
 
 
-router.post("/",addStore );
-router.get("/",getStore );
-router.get("/:store_name",getstorebyname);
-router.put("/:store_name",updatestorebyname);
+router.post("/",addStore );  // ADD new store
+router.get("/",getStore ); // get stores
+
+router.get("/:store_name",getstorebyname); //get store by name
+router.put("/:store_name",updatestorebyname); // update store by name
 
 
 module.exports = router;

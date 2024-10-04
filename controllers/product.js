@@ -5,9 +5,19 @@ const additem = async (req, res) => {
   console.log("Request body", req.body);
 
   // Step 1: Check if the product already exists by product_name
-  const checkProductQuery = `SELECT imei_number, product_stock FROM products WHERE product_name = ?`;
+  const checkProductQuery = `SELECT imei_number, product_stock, product_id FROM products WHERE product_name = ?`;
+  const getStoreNameQuery = `SELECT s.store_name FROM users u JOIN stores s ON u.store_id = s.store_id WHERE u.user_id = ?`;
   
   try {
+    // Fetch store_name by username from req.body (assuming req.body.username contains the username)
+    const [store] = await db.query(getStoreNameQuery, [req.body.user]);
+
+    if (store.length === 0) {
+      return res.status(400).json({ message: "Store not found for the given user." });
+    }
+
+    const storeName = store[0].store_name;
+
     const [product] = await db.query(checkProductQuery, [req.body.product_name]);
     
     if (product.length > 0) {
@@ -30,16 +40,54 @@ const additem = async (req, res) => {
         
         await db.query(updateProductQuery, [updatedImeiNumbers, req.body.product_stock, req.body.product_name]);
 
-        return res.status(200).json({ message: "IMEI number added and stock updated for existing product.", updatedImeiNumbers });
+        // Step 4: Update the stock table for this store
+        const checkStockQuery = `SELECT * FROM stock WHERE product_id = ? AND store_name = ?`;
+        const [existingStock] = await db.query(checkStockQuery, [product[0].product_id, storeName]);
+
+        if (existingStock.length > 0) {
+          // Update the existing stock record
+          const updatedImeiNumbersInStock = existingStock[0].imei_numbers
+            ? existingStock[0].imei_numbers.split(",").concat(req.body.imei_number).join(",")
+            : req.body.imei_number;
+
+          const updateStockQuery = `
+            UPDATE stock
+            SET stock_quantity = stock_quantity + ?, imei_numbers = ?
+            WHERE product_id = ? AND store_name = ?
+          `;
+          await db.query(updateStockQuery, [
+            req.body.product_stock,
+            updatedImeiNumbersInStock,
+            product[0].product_id,
+            storeName,
+          ]);
+        } else {
+          // Insert new stock record
+          const insertStockQuery = `
+            INSERT INTO stock (store_name, product_id, stock_quantity, imei_numbers)
+            VALUES (?, ?, ?, ?)
+          `;
+          await db.query(insertStockQuery, [
+            storeName,
+            product[0].product_id,
+            req.body.product_stock,
+            req.body.imei_number,
+          ]);
+        }
+
+        return res.status(200).json({
+          message: "IMEI number added, product stock updated, and stock updated for the store.",
+          updatedImeiNumbers,
+        });
       }
     } else {
-      // Step 4: Product doesn't exist, insert it as a new product
-      const sql = `
-        INSERT INTO products (product_name, product_price, warranty_period, imei_number, product_stock, product_type , product_model, brand_name)
-        VALUES (?, ?, ?, ?, ?, ?, ? , ?)
+      // Step 5: Product doesn't exist, insert it as a new product
+      const insertProductQuery = `
+        INSERT INTO products (product_name, product_price, warranty_period, imei_number, product_stock, product_type, product_model, brand_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
-      const values = [
+      const productValues = [
         req.body.product_name,
         req.body.product_price,
         req.body.waranty_period,
@@ -47,12 +95,26 @@ const additem = async (req, res) => {
         req.body.product_stock,
         req.body.product_type,
         req.body.product_model,
-        req.body.brand_name
+        req.body.brand_name,
       ];
 
-      const [result] = await db.query(sql, values);
+      const [insertedProduct] = await db.query(insertProductQuery, productValues);
 
-      return res.status(200).json({ message: "New product added successfully.", result });
+      // Step 6: Add entry to the stock table for the new product
+      const insertStockQuery = `
+        INSERT INTO stock (store_name, product_id, stock_quantity, imei_numbers)
+        VALUES (?, ?, ?, ?)
+      `;
+      await db.query(insertStockQuery, [
+        storeName,
+        insertedProduct.insertId, // Product ID from the newly inserted product
+        req.body.product_stock,
+        req.body.imei_number,
+      ]);
+
+      return res.status(200).json({
+        message: "New product added successfully and stock updated for the store.",
+      });
     }
   } catch (err) {
     console.error("Error adding Product:", err.message);
