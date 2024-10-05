@@ -98,7 +98,28 @@ const updatestorebyname = async (req,res) =>{
     }
 };
 
+const getstorenames = async (req, res) => {
+    const sql = "SELECT store_name FROM stores"; // Assuming 'stores' is your table name
 
+    try {
+        // Execute the SQL query to get all store names
+        const [rows] = await db.query(sql);
+
+        // If no stores are found, return a 404 response
+        if (rows.length === 0) {
+            return res.status(404).json({ message: "No stores found." });
+        }
+
+        // Map through the rows to get only the store names
+        const storeNames = rows.map(row => row.store_name);
+
+        // Return the store names as an array in the response
+        return res.json(storeNames);
+    } catch (err) {
+        console.error("Error fetching store names:", err.message);
+        return res.status(500).json({ message: "Error inside server during store name fetch.", err });
+    }
+};
 
 
 
@@ -109,7 +130,8 @@ module.exports = {
     addStore,
     getStore,
     getstorebyname,
-    updatestorebyname
+    updatestorebyname,
+    getstorenames
 
   };
   
