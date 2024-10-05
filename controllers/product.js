@@ -195,7 +195,7 @@ const getFilteredProductDetails = async (req, res) => {
   try {
     console.log("Fetching filtered product details...");
     const [rows] = await db.query(sql, params);
-    
+    console.log(rows);
     return res.json(rows);
   } catch (err) {
     console.error("Error fetching product details:", err.message);
