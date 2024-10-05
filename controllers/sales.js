@@ -186,7 +186,7 @@ const getsales = async (req,res) => {
 
 };
 
-    const getsalebyid = async (req, res) => {
+const getsalebyid = async (req, res) => {
   // Extract sale_id from the request parameters
   const { sale_id } = req.params;
 
@@ -208,6 +208,49 @@ const getsales = async (req,res) => {
     return res.status(500).json({ message: "Error inside server", err });
   }
 };
+
+
+const getSalesItemsByDate = async (req, res) => {
+  const { date } = req.query; // Get the date from request query parameters
+
+  const sql = `
+    SELECT
+      sales_items.sale_item_id,
+      sales_items.sale_id,
+      sales_items.product_id,
+      sales_items.item_quantity,
+      sales_items.item_price,
+      sales_items.imei_number,
+      sales_items.discount,
+      sales_items.warranty_period,
+      sales.created_at AS sale_date,
+      cashiers.cashier_name,
+      stores.store_name
+    FROM sales_items
+    INNER JOIN sales ON sales.sale_id = sales_items.sale_id
+    INNER JOIN cashiers ON sales.cashier_id = cashiers.cashier_id
+    INNER JOIN stores ON cashiers.store_id = stores.store_id
+    WHERE DATE(sales.created_at) = ?
+    ORDER BY stores.store_name, sales_items.sale_item_id;
+  `;
+
+  try {
+    // Execute the SQL query to get the sales items for the specified date
+    const [rows] = await db.query(sql, [date]);
+
+    // If no sales items are found for the date, return a 404 response
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "No sales items found for the given date." });
+    }
+
+    // Return the sales items along with store and cashier details
+    return res.status(200).json({ sales_items: rows });
+  } catch (err) {
+    console.error("Error fetching sales items by date:", err.message);
+    return res.status(500).json({ message: "Error inside server during sales items fetch.", err });
+  }
+};
+
 
 
 
@@ -274,6 +317,7 @@ module.exports = {
     makesale,
     getsales,
     getsalebyid,
-    getDailySalesReport
+    getDailySalesReport,
+    getSalesItemsByDate
 
   };
