@@ -258,7 +258,6 @@ const getSalesItemsByDate = async (req, res) => {
 
   
 
-  
 const getDailySalesReport = async (req, res) => {
   const { date } = req.query; // Date will be passed from the frontend in the format 'YYYY-MM-DD'
 
@@ -276,11 +275,13 @@ const getDailySalesReport = async (req, res) => {
       sales_items.item_quantity,
       sales_items.item_price,
       sales_items.imei_number,
-      sales_items.discount
+      sales_items.discount,
+      products.product_name -- Include product name from the products table
     FROM sales_items
     INNER JOIN sales ON sales.sale_id = sales_items.sale_id
     INNER JOIN cashiers ON sales.cashier_id = cashiers.cashier_id
     INNER JOIN stores ON cashiers.store_id = stores.store_id
+    INNER JOIN products ON products.product_id = sales_items.product_id -- Join with products table to get the product name
     WHERE DATE(sales.created_at) = ?
     ORDER BY stores.store_name, sales.sale_id;
   `;
@@ -321,6 +322,7 @@ const getDailySalesReport = async (req, res) => {
         sale_date: sale.sale_date,
         cashier_name: sale.cashier_name,
         product_id: sale.product_id,
+        product_name: sale.product_name, // Include product name
         item_quantity: sale.item_quantity,
         item_price: sale.item_price,
         imei_number: sale.imei_number,
@@ -343,6 +345,7 @@ const getDailySalesReport = async (req, res) => {
     });
   }
 };
+
 
   
 module.exports = {
