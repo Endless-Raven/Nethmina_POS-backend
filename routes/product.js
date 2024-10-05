@@ -1,6 +1,16 @@
 const express = require("express");
 
-const { additem , getitembyid , getitems , updateitem , deleteitem ,getProductTypes , getBrandsByProductType , getProductModelsByBrandName , getFilteredProductDetails } = require("../controllers/product");
+const { additem ,
+    getitembyid ,
+    getitems ,
+    updateitem ,
+    deleteitem ,
+    getProductTypes ,
+     getBrandsByProductType ,
+      getProductModelsByBrandName , 
+      getFilteredProductDetails ,
+      searchProductsByName
+    } = require("../controllers/product");
 
 
 const router = express.Router();
@@ -18,6 +28,12 @@ router.get("/brands/byproducttype",getBrandsByProductType); //get brand list for
 router.get("/models/bybrand",getProductModelsByBrandName); //get models list for POS
 
 router.get("/getFilteredProductDetails/get",getFilteredProductDetails); //get products filterd for inventory
+
+
+
+router.get("/searchProductsBy/Name",searchProductsByName); //get products name for search bar
+
+
 
 
 

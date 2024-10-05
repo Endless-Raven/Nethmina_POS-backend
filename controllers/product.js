@@ -244,6 +244,35 @@ const getProductModelsByBrandName = async (req, res) => {
 };
 
 
+const searchProductsByName = async (req, res) => {
+  const { searchText } = req.query; // Get the search text from the query parameters
+
+  if (!searchText) {
+    return res.status(400).json({ message: "Search text is required." });
+  }
+
+  const sql = "SELECT product_name FROM products WHERE product_name LIKE ?";
+
+  try {
+    // Execute the SQL query
+    const [rows] = await db.query(sql, [`%${searchText}%`]);
+
+    // Check if any products are found
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "No products found." });
+    }
+
+    // Map the result to extract only product names
+    const productNames = rows.map(row => row.product_name);
+
+    // Return the product names as an array
+    return res.json(productNames);
+  } catch (err) {
+    console.error("Error fetching products:", err.message);
+    return res.status(500).json({ message: "Error inside server during product search.", err });
+  }
+};
+
 
 
 
@@ -360,7 +389,8 @@ module.exports = {
     getProductTypes,
     getBrandsByProductType,
     getProductModelsByBrandName,
-    getFilteredProductDetails
+    getFilteredProductDetails,
+    searchProductsByName
   };
   
 
