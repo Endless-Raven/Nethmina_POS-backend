@@ -42,6 +42,31 @@ const getStore = async (req,res) =>{
 
 
 //get Store By name
+const getstorenamebyid = async (req,res) =>{
+    const store_id = req.params.store_id; 
+
+    const sql = `
+        SELECT *
+        FROM stores
+        WHERE store_id = ?`;
+    
+        try {
+            console.log("Fetching store by ID:", store_id);
+            
+            const [rows] = await db.query(sql, [store_id]); // Pass the store ID as a parameter to the query
+        
+            if (rows.length === 0) {
+              return res.status(404).json({ message: "store not found." }); // Handle case where no product is found
+            }
+        
+            return res.json(rows[0]); // Return the found store name
+          } catch (err) {
+            console.error("Error fetching store:", err.message);
+            return res.status(500).json({ message: "Error inside server", err });
+          }
+}
+
+//get Store By name
 const getstorebyname = async (req,res) =>{
     const store_name = req.params.store_name; 
 
@@ -131,7 +156,8 @@ module.exports = {
     getStore,
     getstorebyname,
     updatestorebyname,
-    getstorenames
+    getstorenames,
+    getstorenamebyid
 
   };
   
