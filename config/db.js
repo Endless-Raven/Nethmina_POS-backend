@@ -116,8 +116,9 @@ CREATE TABLE `stores` (
   `store_phone_number` varchar(100) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`store_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+  PRIMARY KEY (`store_id`),
+  UNIQUE KEY `unique_store_name` (`store_name`)
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 
 CREATE TABLE `users` (
@@ -141,26 +142,27 @@ CREATE TABLE `warranties` (
   `warranty_end_date` date NOT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `period` varchar(45) NOT NULL,
   PRIMARY KEY (`warranty_id`),
   KEY `product_id` (`product_id`),
   KEY `sale_id` (`sale_id`),
   CONSTRAINT `warranties_ibfk_1` FOREIGN KEY (`product_id`) REFERENCES `products` (`product_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 
 CREATE TABLE `stock` (
   `stockid` int NOT NULL AUTO_INCREMENT,
-  `store_id` int NOT NULL,
+  `store_name` varchar(100) NOT NULL,
   `product_id` int NOT NULL,
   `stock_quantity` int NOT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `imei_numbers` longtext,
   PRIMARY KEY (`stockid`),
-  KEY `fk_stock_store_id` (`store_id`),
   KEY `fk_stock_product_id` (`product_id`),
+  KEY `fk_stock_store_name` (`store_name`),
   CONSTRAINT `fk_stock_product_id` FOREIGN KEY (`product_id`) REFERENCES `products` (`product_id`),
-  CONSTRAINT `fk_stock_store_id` FOREIGN KEY (`store_id`) REFERENCES `stores` (`store_id`)
+  CONSTRAINT `fk_stock_store_name` FOREIGN KEY (`store_name`) REFERENCES `stores` (`store_name`)
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
  */
