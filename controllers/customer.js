@@ -97,6 +97,30 @@ const addCustomer = async (req, res) => {
         return res.status(500).json({ message: "Error inside server.", err });
     }
 };
+const addCustomerpera = async (customerDetails) => {
+    const sql = `
+      INSERT INTO customers (customer_name, customer_email, customer_phone_number, customer_address)
+      VALUES (?, ?, ?, ?)
+    `;
+  console.log(customerDetails)
+    const values = [
+      customerDetails.customer_name,
+      customerDetails.customer_email,
+      customerDetails.customer_phone_number,
+      customerDetails.customer_address,
+    ];
+  
+    try {
+      const [result] = await db.query(sql, values);
+      
+      // Return the inserted customer ID
+      return result.insertId;  // Assuming `insertId` returns the newly added customer's ID
+    } catch (err) {
+      console.error("Error adding customer:", err.message);
+      throw new Error("Error adding customer.");  // Throw an error to handle it in the calling function
+    }
+  };
+  
 
 // Update customer
 const updateCustomer = async (req, res) => {
@@ -150,4 +174,5 @@ module.exports = {
     addCustomer,
     updateCustomer,
     deleteCustomer,
+    addCustomerpera
 };
