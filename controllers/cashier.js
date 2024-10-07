@@ -14,6 +14,41 @@ const getCashiers = async (req, res) => {
     }
 };
 
+const getCashiersnames = async (req, res) => {
+    const sql = "SELECT cashier_name FROM cashiers";
+    
+    try {
+        console.log("Fetching all cashiers");
+        const [rows] = await db.query(sql);
+        if (rows.length === 0) {
+                        return res.status(404).json({ message: "No stores found." });
+        }
+        // Map through the rows to get only the store names
+        const cashiersNames = rows.map(row => row.cashier_name);
+
+        return res.json(cashiersNames);
+    } catch (err) {
+        console.error("Error fetching cashiers:", err.message);
+        return res.status(500).json({ message: "Error inside server", err });
+    }
+};
+
+
+// const [rows] = await db.query(sql);
+
+//         // If no stores are found, return a 404 response
+//         if (rows.length === 0) {
+//             return res.status(404).json({ message: "No stores found." });
+//         }
+
+//         // Map through the rows to get only the store names
+//         const storeNames = rows.map(row => row.store_name);
+
+//         // Return the store names as an array in the response
+//         return res.json(storeNames);
+   
+
+
 // Get cashier by ID
 const getCashierById = async (req, res) => {
     const { id } = req.params;
@@ -33,6 +68,8 @@ const getCashierById = async (req, res) => {
         return res.status(500).json({ message: "Error inside server", err });
     }
 };
+
+
 
 // Get cashiers by store name
 const getCashiersByStoreName = async (req, res) => {
@@ -166,6 +203,31 @@ const deleteCashier = async (req, res) => {
     }
 };
 
+const getCashiersByStoreId = async (req, res) => {
+    const { store_id } = req.query; // Get store_id from request query parameters
+    
+    const sql = "SELECT cashier_id, cashier_name FROM cashiers WHERE store_id = ?";
+  
+    try {
+      // Execute the SQL query
+      const [rows] = await db.query(sql, [store_id]);
+  
+      // Check if cashiers are found
+      if (rows.length === 0) {
+        return res.status(404).json({ message: "No cashiers found for the given store." });
+      }
+  
+      // Return the fetched cashiers
+      return res.json(rows);
+    } catch (err) {
+      console.error("Error fetching cashiers:", err.message);
+      return res.status(500).json({ message: "Error inside server during fetching cashiers.", err });
+    }
+  };
+  
+
+
+
 module.exports = {
     getCashiers,
     getCashierById,
@@ -175,4 +237,6 @@ module.exports = {
     addCashier,
     updateCashier,
     deleteCashier,
+    getCashiersByStoreId,
+    getCashiersnames
 };

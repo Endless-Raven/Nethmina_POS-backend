@@ -42,6 +42,31 @@ const getStore = async (req,res) =>{
 
 
 //get Store By name
+const getstorenamebyid = async (req,res) =>{
+    const store_id = req.params.store_id; 
+
+    const sql = `
+        SELECT *
+        FROM stores
+        WHERE store_id = ?`;
+    
+        try {
+            console.log("Fetching store by ID:", store_id);
+            
+            const [rows] = await db.query(sql, [store_id]); // Pass the store ID as a parameter to the query
+        
+            if (rows.length === 0) {
+              return res.status(404).json({ message: "store not found." }); // Handle case where no product is found
+            }
+        
+            return res.json(rows[0]); // Return the found store name
+          } catch (err) {
+            console.error("Error fetching store:", err.message);
+            return res.status(500).json({ message: "Error inside server", err });
+          }
+}
+
+//get Store By name
 const getstorebyname = async (req,res) =>{
     const store_name = req.params.store_name; 
 
@@ -98,7 +123,28 @@ const updatestorebyname = async (req,res) =>{
     }
 };
 
+const getstorenames = async (req, res) => {
+    const sql = "SELECT store_name FROM stores"; // Assuming 'stores' is your table name
 
+    try {
+        // Execute the SQL query to get all store names
+        const [rows] = await db.query(sql);
+
+        // If no stores are found, return a 404 response
+        if (rows.length === 0) {
+            return res.status(404).json({ message: "No stores found." });
+        }
+
+        // Map through the rows to get only the store names
+        const storeNames = rows.map(row => row.store_name);
+
+        // Return the store names as an array in the response
+        return res.json(storeNames);
+    } catch (err) {
+        console.error("Error fetching store names:", err.message);
+        return res.status(500).json({ message: "Error inside server during store name fetch.", err });
+    }
+};
 
 
 
@@ -109,7 +155,9 @@ module.exports = {
     addStore,
     getStore,
     getstorebyname,
-    updatestorebyname
+    updatestorebyname,
+    getstorenames,
+    getstorenamebyid
 
   };
   

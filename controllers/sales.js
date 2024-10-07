@@ -86,50 +86,79 @@ const makesale = async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?);
     `;
 
-    const updateProductStockAndImeiQuery = `
+    const updateProductStockQuery = `
       UPDATE products
-      SET product_stock = product_stock - ?, imei_number = ?
+      SET product_stock = product_stock - ?
       WHERE product_id = ? AND product_stock >= ?;
     `;
 
     // Query for updating the stock table
     const updateStockQuery = `
       UPDATE stock
-      SET stock_quantity = stock_quantity - ?, imei_numbers = ?
+      SET stock_quantity = stock_quantity - ?
       WHERE store_name = ? AND product_id = ? AND stock_quantity >= ?;
     `;
 
     // Loop through each product to process the sale
     for (const product of products) {
-      const { product_id, item_quantity, item_price, imei_number, discount } = product;
+      const { product_id, quantity, price, serial_number, discount } = product;
+      const imei_number = serial_number;
+      const item_quantity = quantity;
+      const item_price = price;
 
       try {
-        // Insert into sales_items table
-        await db.query(salesItemQuery, [sales_id, product_id, item_quantity, item_price, imei_number, discount]);
+        // Insert into sales_items table (null if no imei_number)
+        await db.query(salesItemQuery, [
+          sales_id,
+          product_id,
+          item_quantity,
+          item_price,
+          imei_number || null, // Handle cases where imei_number may be null
+          discount
+        ]);
 
-        // Fetch current IMEI numbers from the products table
-        const [currentImeiResult] = await db.query("SELECT imei_number FROM products WHERE product_id = ?", [product_id]);
-        const currentImeiNumbers = currentImeiResult[0]?.imei_number.split(",") || [];
-
-        // Remove the sold IMEI number from the list
-        const updatedImeiNumbers = currentImeiNumbers.filter(imei => imei !== imei_number).join(",");
-
-        // Update stock and IMEI in the products table
-        const [productStockUpdated] = await db.query(updateProductStockAndImeiQuery, [item_quantity, updatedImeiNumbers, product_id, item_quantity]);
+        // Update product stock
+        const [productStockUpdated] = await db.query(updateProductStockQuery, [item_quantity, product_id, item_quantity]);
 
         if (productStockUpdated.affectedRows === 0) {
           throw new Error(`Insufficient product stock for product ${product_id}.`);
         }
 
-        // Fetch current IMEI numbers from the stock table
-        const [currentStockImeiResult] = await db.query("SELECT imei_numbers FROM stock WHERE store_name = ? AND product_id = ?", [store_name, product_id]);
-        const currentStockImeiNumbers = currentStockImeiResult[0]?.imei_numbers.split(",") || [];
+        // If an IMEI number is provided, update the IMEI-related data
+        if (imei_number) {
+          // Fetch current IMEI numbers from the products table
+          const [currentImeiResult] = await db.query("SELECT imei_number FROM products WHERE product_id = ?", [product_id]);
+          const currentImeiNumbers = currentImeiResult[0]?.imei_number.split(",") || [];
 
-        // Remove the sold IMEI number from stock's IMEI list
-        const updatedStockImeiNumbers = currentStockImeiNumbers.filter(imei => imei !== imei_number).join(",");
+          // Remove the sold IMEI number from the list
+          const updatedImeiNumbers = currentImeiNumbers.filter(imei => imei !== imei_number).join(",");
 
-        // Update stock_quantity and IMEI in the stock table
-        const [stockUpdated] = await db.query(updateStockQuery, [item_quantity, updatedStockImeiNumbers, store_name, product_id, item_quantity]);
+          // Update IMEI in the products table
+          const updateProductImeiQuery = `
+            UPDATE products
+            SET imei_number = ?
+            WHERE product_id = ?;
+          `;
+          await db.query(updateProductImeiQuery, [updatedImeiNumbers, product_id]);
+
+          // Fetch current IMEI numbers from the stock table
+          const [currentStockImeiResult] = await db.query("SELECT imei_numbers FROM stock WHERE store_name = ? AND product_id = ?", [store_name, product_id]);
+          const currentStockImeiNumbers = currentStockImeiResult[0]?.imei_numbers.split(",") || [];
+
+          // Remove the sold IMEI number from stock's IMEI list
+          const updatedStockImeiNumbers = currentStockImeiNumbers.filter(imei => imei !== imei_number).join(",");
+
+          // Update stock IMEI in the stock table
+          const updateStockImeiQuery = `
+            UPDATE stock
+            SET imei_numbers = ?
+            WHERE store_name = ? AND product_id = ?;
+          `;
+          await db.query(updateStockImeiQuery, [updatedStockImeiNumbers, store_name, product_id]);
+        }
+
+        // Update the stock table for quantity only (for all products, whether IMEI exists or not)
+        const [stockUpdated] = await db.query(updateStockQuery, [item_quantity, store_name, product_id, item_quantity]);
 
         if (stockUpdated.affectedRows === 0) {
           throw new Error(`Failed to update stock for product ${product_id} in store ${store_name}.`);
@@ -171,7 +200,7 @@ const getsales = async (req,res) => {
 
 };
 
-    const getsalebyid = async (req, res) => {
+const getsalebyid = async (req, res) => {
   // Extract sale_id from the request parameters
   const { sale_id } = req.params;
 
@@ -196,67 +225,51 @@ const getsales = async (req,res) => {
 // const getDailySalesReport = async (req, res) => {
 
 
+const getSalesItemsByDate = async (req, res) => {
+  const { date } = req.query; // Get the date from request query parameters
+
+  const sql = `
+    SELECT
+      sales_items.sale_item_id,
+      sales_items.sale_id,
+      sales_items.product_id,
+      sales_items.item_quantity,
+      sales_items.item_price,
+      sales_items.imei_number,
+      sales_items.discount,
+      sales_items.warranty_period,
+      sales.created_at AS sale_date,
+      cashiers.cashier_name,
+      stores.store_name
+    FROM sales_items
+    INNER JOIN sales ON sales.sale_id = sales_items.sale_id
+    INNER JOIN cashiers ON sales.cashier_id = cashiers.cashier_id
+    INNER JOIN stores ON cashiers.store_id = stores.store_id
+    WHERE DATE(sales.created_at) = ?
+    ORDER BY stores.store_name, sales_items.sale_item_id;
+  `;
+
+  try {
+    // Execute the SQL query to get the sales items for the specified date
+    const [rows] = await db.query(sql, [date]);
+
+    // If no sales items are found for the date, return a 404 response
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "No sales items found for the given date." });
+    }
+
+    // Return the sales items along with store and cashier details
+    return res.status(200).json({ sales_items: rows });
+  } catch (err) {
+    console.error("Error fetching sales items by date:", err.message);
+    return res.status(500).json({ message: "Error inside server during sales items fetch.", err });
+  }
+};
 
 
 
   
 
-  
-  //   const { date } = req.query; // Date will be passed from the frontend in the format 'YYYY-MM-DD'
-  
-  //   const sql = `
-  //     SELECT
-  //       sales.sale_id,
-  //       sales.sales_person,
-  //       sales.total_amount,
-  //       sales.created_at AS sale_date,
-  //       cashiers.cashier_name,
-  //       stores.store_name,
-  //       stores.store_address,
-  //       stores.store_phone_number,
-  //       sales_items.product_id,
-  //       sales_items.item_quantity,
-  //       sales_items.item_price,
-  //       sales_items.imei_number,
-  //       sales_items.discount
-  //     FROM sales_items
-  //     INNER JOIN sales ON sales.sale_id = sales_items.sale_id
-  //     INNER JOIN cashiers ON sales.cashier_id = cashiers.cashier_id
-  //     INNER JOIN stores ON cashiers.store_id = stores.store_id
-  //     WHERE DATE(sales.created_at) = ?
-  //     ORDER BY stores.store_name, sales.sale_id;
-  //   `;
-  
-  //   try {
-  //     // Fetch the sales report based on the provided date
-  //     const [rows] = await db.query(sql, [date]);
-  
-  //     if (rows.length === 0) {
-  //       return res.status(404).json({ message: "No sales found for the given date." });
-  //     }
-  
-  //     // Group the results by store
-  //     const salesReportByStore = rows.reduce((report, sale) => {
-  //       const { store_name } = sale;
-  
-  //       if (!report[store_name]) {
-  //         report[store_name] = [];
-  //       }
-  
-  //       // Add the sale to the corresponding store's array
-  //       report[store_name].push(sale);
-  //       return report;
-  //     }, {});
-  
-  //     return res.status(200).json({ message: "Daily sales report generated successfully.", report: salesReportByStore });
-  //   } catch (err) {
-  //     console.error("Error generating daily sales report:", err.message);
-  //     return res.status(500).json({ message: "Error inside server during daily sales report generation.", err });
-  //   }
-  // };
-  
-// Function to create a PDF report and send via email
-// Function to create a PDF report and send via email
 const getDailySalesReport = async (req, res) => {
   const { date} = req.query;
 
@@ -274,21 +287,79 @@ const getDailySalesReport = async (req, res) => {
       sales_items.item_quantity,
       sales_items.item_price,
       sales_items.imei_number,
-      sales_items.discount
+      sales_items.discount,
+      products.product_name -- Include product name from the products table
     FROM sales_items
     INNER JOIN sales ON sales.sale_id = sales_items.sale_id
     INNER JOIN cashiers ON sales.cashier_id = cashiers.cashier_id
     INNER JOIN stores ON cashiers.store_id = stores.store_id
+    INNER JOIN products ON products.product_id = sales_items.product_id -- Join with products table to get the product name
     WHERE DATE(sales.created_at) = ?
     ORDER BY stores.store_name, sales.sale_id;
   `;
 
   try {
+
+    // Fetch the sales report based on the provided date
+
     const [rows] = await db.query(sql, [date]);
 
     if (rows.length === 0) {
       return res.status(404).json({ message: "No sales found for the given date." });
     }
+
+    // Group the results by store name
+    const salesReportByStore = {};
+    
+    rows.forEach(sale => {
+      const storeName = sale.store_name;
+
+      // If the store doesn't exist in the report, initialize it
+      if (!salesReportByStore[storeName]) {
+        salesReportByStore[storeName] = {
+          store_name: storeName,
+          store_address: sale.store_address,
+          store_phone_number: sale.store_phone_number,
+          total_sales: 0,
+          sales: []
+        };
+      }
+
+      // Add this sale's total amount to the store's total sales
+      salesReportByStore[storeName].total_sales += parseFloat(sale.total_amount);
+
+      // Add the sale item details to the store's sales list
+      salesReportByStore[storeName].sales.push({
+        sale_id: sale.sale_id,
+        sales_person: sale.sales_person,
+        total_amount: sale.total_amount,
+        sale_date: sale.sale_date,
+        cashier_name: sale.cashier_name,
+        product_id: sale.product_id,
+        product_name: sale.product_name, // Include product name
+        item_quantity: sale.item_quantity,
+        item_price: sale.item_price,
+        imei_number: sale.imei_number,
+        discount: sale.discount
+      });
+    });
+
+    // Convert the report object to an array for easier handling on the frontend
+    const reportArray = Object.values(salesReportByStore);
+
+    return res.status(200).json({
+      message: "Daily sales report generated successfully.",
+      report: reportArray
+    });
+  } catch (err) {
+    console.error("Error generating daily sales report:", err.message);
+    return res.status(500).json({
+      message: "Error inside server during daily sales report generation.",
+      err
+    });
+  }
+};
+
 
     // Group the results by store
     const salesReportByStore = rows.reduce((report, sale) => {
@@ -429,6 +500,7 @@ module.exports = {
     makesale,
     getsales,
     getsalebyid,
-    getDailySalesReport
+    getDailySalesReport,
+    getSalesItemsByDate
 
   };

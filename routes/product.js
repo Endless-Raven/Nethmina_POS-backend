@@ -1,19 +1,44 @@
 const express = require("express");
 
-const { additem , getitembyid , getitems , updateitem , deleteitem ,getProductTypes , getBrandsByProductType , getProductModelsByBrandName  } = require("../controllers/product");
+const { additem ,
+    getitembyid ,
+    getitems ,
+    updateitem ,
+    deleteitem ,
+    getProductTypes ,
+     getBrandsByProductType ,
+      getProductModelsByBrandName , 
+      getFilteredProductDetails ,
+      searchProductsByName
+    } = require("../controllers/product");
 
 
 const router = express.Router();
 
 
-router.post("/",additem );
-router.get("/", getitems );
-router.get("/:product_name",getitembyid );
-router.put("/:product_name",updateitem );
-router.delete("/:product_name",deleteitem);
-router.get("/getProductTypes/get",getProductTypes);
-router.get("/brands/byproducttype",getBrandsByProductType);
-router.get("/models/bybrand",getProductModelsByBrandName);
+router.post("/",additem ); //add item
+router.get("/", getitems );//get items
+
+router.get("/:product_name",getitembyid );// get item by id
+router.put("/:product_name",updateitem ); //update item details 
+router.delete("/:product_name",deleteitem); //delete item
+
+router.get("/getProductTypes/get",getProductTypes); //get product type list for POS
+router.get("/brands/byproducttype",getBrandsByProductType); //get brand list for POS
+router.get("/models/bybrand",getProductModelsByBrandName); //get models list for POS
+
+router.post("/getFiltered/ProductDetails",getFilteredProductDetails); //get products filterd for inventory
+
+
+
+router.get("/searchProductsBy/Name",searchProductsByName); //get products name for search bar
+
+
+
+
+
+
+
 
 module.exports = router;
 
