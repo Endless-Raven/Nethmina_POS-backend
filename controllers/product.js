@@ -185,7 +185,7 @@ const getFilteredProductDetails = async (req, res) => {
     });
 
    // console.log("Filtered products:", filteredProducts);
-    console.log("rhtrh",req.body);
+    console.log("rhtrh",store_name);
     return res.json(filteredProducts);
   } catch (err) {
     console.error("Error fetching product details:", err.message);

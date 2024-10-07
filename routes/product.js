@@ -27,7 +27,7 @@ router.get("/getProductTypes/get",getProductTypes); //get product type list for 
 router.get("/brands/byproducttype",getBrandsByProductType); //get brand list for POS
 router.get("/models/bybrand",getProductModelsByBrandName); //get models list for POS
 
-router.get("/getFiltered/ProductDetails",getFilteredProductDetails); //get products filterd for inventory
+router.post("/getFiltered/ProductDetails",getFilteredProductDetails); //get products filterd for inventory
 
 
 
