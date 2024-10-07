@@ -161,47 +161,38 @@ const getBrandsByProductType = async (req, res) => {
 }
 
 const getFilteredProductDetails = async (req, res) => {
-  const { product_name, store_name, brand_name, product_type } = req.body; // Get filter values from request body
-
-  let sql = `
-    SELECT p.*, s.store_name, s.stock_quantity, s.imei_numbers
-    FROM products p
-    JOIN stock s ON p.product_id = s.product_id
-    WHERE 1=1
-  `;
-  const params = [];
-
-  // Dynamically add conditions based on provided filters
-  if (product_name) {
-    sql += " AND p.product_name LIKE ?";
-    params.push(`%${product_name}%`);
-  }
-
-  if (store_name) {
-    sql += " AND s.store_name LIKE ?";
-    params.push(`%${store_name}%`);
-  }
-
-  if (brand_name) {
-    sql += " AND p.brand_name LIKE ?";
-    params.push(`%${brand_name}%`);
-  }
-
-  if (product_type) {
-    sql += " AND p.product_type LIKE ?";
-    params.push(`%${product_type}%`);
-  }
+  const { product_name, store_name, brand_name, product_type } = req.body;
 
   try {
-    console.log("Fetching filtered product details...");
-    const [rows] = await db.query(sql, params);
-    console.log(rows);
-    return res.json(rows);
+    console.log("Fetching all product details...");
+    // Fetch all products and stock data from the database
+    const [rows] = await db.query(`
+      SELECT p.*, s.store_name, s.stock_quantity, s.imei_numbers
+      FROM products p 
+      JOIN stock s ON p.product_id = s.product_id
+    `);
+
+    console.log("Applying filters...");
+
+    // Apply .filter() based on conditions
+    const filteredProducts = rows.filter((product) => {
+      return (
+        (!product_name || product_name === "All" || product.product_name.toLowerCase().includes(product_name.toLowerCase())) &&
+        (!store_name || store_name === "All" || product.store_name.toLowerCase().includes(store_name.toLowerCase())) &&
+        (!brand_name || brand_name === "All" || product.brand_name.toLowerCase().includes(brand_name.toLowerCase())) &&
+        (!product_type || product_type === "All" || product.product_type.toLowerCase().includes(product_type.toLowerCase()))
+      );
+    });
+
+   // console.log("Filtered products:", filteredProducts);
+    console.log("rhtrh",req.body);
+    return res.json(filteredProducts);
   } catch (err) {
     console.error("Error fetching product details:", err.message);
     return res.status(500).json({ message: "Error inside server", err });
   }
 };
+
 
 
 
