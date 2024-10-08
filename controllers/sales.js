@@ -291,8 +291,41 @@ const getSalesItemsByDate = async (req, res) => {
       return res.status(404).json({ message: "No sales items found for the given date." });
     }
 
-    // Return the sales items along with store and cashier details
-    return res.status(200).json({ sales_items: rows });
+    // Organize sales data by stores
+    const storesSales = {};
+
+    rows.forEach((item) => {
+      const storeName = item.store_name;
+
+      // If the store doesn't exist in the storesSales object, initialize it
+      if (!storesSales[storeName]) {
+        storesSales[storeName] = {
+          store_name: storeName,
+          total_sales: 0,
+          sales: [],
+        };
+      }
+
+      // Add the sale item to the store's sales array
+      storesSales[storeName].sales.push({
+        sale_item_id: item.sale_item_id,
+        sale_id: item.sale_id,
+        product_id: item.product_id,
+        item_quantity: item.item_quantity,
+        item_price: item.item_price,
+        imei_number: item.imei_number,
+        discount: item.discount,
+        warranty_period: item.warranty_period,
+        sale_date: item.sale_date,
+        cashier_name: item.cashier_name,
+      });
+
+      // Increment the total sales for the store
+      storesSales[storeName].total_sales += parseFloat(item.item_price);
+    });
+
+    // Return the sales data grouped by stores
+    return res.status(200).json({ stores_sales: Object.values(storesSales) });
   } catch (err) {
     console.error("Error fetching sales items by date:", err.message);
     return res.status(500).json({ message: "Error inside server during sales items fetch.", err });
