@@ -88,7 +88,7 @@ const additem = async (req, res) => {
       `;
 
       const productValues = [
-        req.body.product_name,
+       req.body.product_name,
         req.body.product_price,
         req.body.waranty_period,
         req.body.imei_number,

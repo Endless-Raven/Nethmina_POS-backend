@@ -257,6 +257,87 @@ const getsales = async (req,res) => {
   
 // Function to create a PDF report and send via email
 // Function to create a PDF report and send via email
+
+const getSalesItemsByDate = async (req, res) => {
+  const { date } = req.query; // Get the date from request query parameters
+
+  const sql = `
+    SELECT
+      sales_items.sale_item_id,
+      sales_items.sale_id,
+      sales_items.product_id,
+      sales_items.item_quantity,
+      sales_items.item_price,
+      sales_items.imei_number,
+      sales_items.discount,
+      sales_items.warranty_period,
+      sales.created_at AS sale_date,
+      cashiers.cashier_name,
+      stores.store_name,
+      products.product_name
+    FROM sales_items
+    INNER JOIN sales ON sales.sale_id = sales_items.sale_id
+    INNER JOIN cashiers ON sales.cashier_id = cashiers.cashier_id
+    INNER JOIN stores ON cashiers.store_id = stores.store_id
+    INNER JOIN products ON products.product_id = sales_items.product_id
+    WHERE DATE(sales.created_at) = ?
+    ORDER BY stores.store_name, sales_items.sale_item_id;
+  `;
+
+  try {
+    // Execute the SQL query to get the sales items for the specified date
+    const [rows] = await db.query(sql, [date]);
+
+    // If no sales items are found for the date, return a 404 response
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "No sales items found for the given date." });
+    }
+
+    // Organize sales data by stores
+    const storesSales = {};
+
+    rows.forEach((item) => {
+      const storeName = item.store_name;
+
+      // If the store doesn't exist in the storesSales object, initialize it
+      if (!storesSales[storeName]) {
+        storesSales[storeName] = {
+          store_name: storeName,
+          total_sales: 0,
+          sales: [],
+        };
+      }
+
+      // Add the sale item to the store's sales array
+      storesSales[storeName].sales.push({
+        sale_item_id: item.sale_item_id,
+        sale_id: item.sale_id,
+        product_id: item.product_id,
+        product_name: item.product_name, // Include product name
+        item_quantity: item.item_quantity,
+        item_price: item.item_price,
+        imei_number: item.imei_number,
+        discount: item.discount,
+        warranty_period: item.warranty_period,
+        sale_date: item.sale_date,
+        cashier_name: item.cashier_name,
+      });
+
+      // Increment the total sales for the store
+      storesSales[storeName].total_sales += parseFloat(item.item_price);
+    });
+
+    // Return the sales data grouped by stores
+    return res.status(200).json({ stores_sales: Object.values(storesSales) });
+  } catch (err) {
+    console.error("Error fetching sales items by date:", err.message);
+    return res.status(500).json({ message: "Error inside server during sales items fetch.", err });
+  }
+};
+
+
+
+
 const getDailySalesReport = async (req, res) => {
   const { date} = req.query;
 
@@ -430,6 +511,7 @@ module.exports = {
     makesale,
     getsales,
     getsalebyid,
-    getDailySalesReport
+    getDailySalesReport,
+    getSalesItemsByDate
 
   };
