@@ -3,10 +3,10 @@ const mysql = require("mysql2/promise");
 require('dotenv').config();
 
 const db = mysql.createPool({
-  host: "nethmina-pos.c744e6yi8s7w.eu-north-1.rds.amazonaws.com",
-  user: "root",
+  host:"nethminapos-main.crem6m0k23gc.eu-north-1.rds.amazonaws.com",
+  user: "admin",
   database: "nethmina_POS",
-  password: "Nethmina123#",
+  password: "nethmina123main",
   port:"3306",
   // timezone: 'Z'
 });
