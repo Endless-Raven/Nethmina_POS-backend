@@ -273,11 +273,13 @@ const getSalesItemsByDate = async (req, res) => {
       sales_items.warranty_period,
       sales.created_at AS sale_date,
       cashiers.cashier_name,
-      stores.store_name
+      stores.store_name,
+      products.product_name
     FROM sales_items
     INNER JOIN sales ON sales.sale_id = sales_items.sale_id
     INNER JOIN cashiers ON sales.cashier_id = cashiers.cashier_id
     INNER JOIN stores ON cashiers.store_id = stores.store_id
+    INNER JOIN products ON products.product_id = sales_items.product_id
     WHERE DATE(sales.created_at) = ?
     ORDER BY stores.store_name, sales_items.sale_item_id;
   `;
@@ -311,6 +313,7 @@ const getSalesItemsByDate = async (req, res) => {
         sale_item_id: item.sale_item_id,
         sale_id: item.sale_id,
         product_id: item.product_id,
+        product_name: item.product_name, // Include product name
         item_quantity: item.item_quantity,
         item_price: item.item_price,
         imei_number: item.imei_number,
@@ -331,7 +334,6 @@ const getSalesItemsByDate = async (req, res) => {
     return res.status(500).json({ message: "Error inside server during sales items fetch.", err });
   }
 };
-
 
 
 
