@@ -23,7 +23,7 @@ app.use(express.json());
 // Root route
 app.get('/.well-known/pki-validation/392E2CF1BDBE028C1CDB993D4B3EF153.txt', (req, res) => {
   // res.send('Welcome to the Nethmina POS backend!'); // Welcome message
-  res.sendFile('C:/Users/shazna salman/Desktop/projects/Netmina POS/nethmina_pos/392E2CF1BDBE028C1CDB993D4B3EF153.txt');
+  res.sendFile('nethmina_pos/392E2CF1BDBE028C1CDB993D4B3EF153.txt');
 });
 
 app.use("/sales", salesRoutes);
