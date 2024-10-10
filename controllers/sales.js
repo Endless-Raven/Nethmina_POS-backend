@@ -60,6 +60,10 @@ const makesale = async (req, res) => {
   try {
     const { cashier_id, sales_person, total_amount, products, user, customer_details } = req.body;
 
+
+     // First, add the customer using the addCustomer function
+     const customer_id = await addCustomerpera(customer_details);  // Assuming the addCustomer function returns a customer_id
+
     // Retrieve store_name based on user (user_id)
     const store_name = await getStoreNameByUser(user);
     console.log(`Store name for user ${user}: ${store_name}`);
@@ -129,9 +133,7 @@ const makesale = async (req, res) => {
         // Update stock_quantity and IMEI number in the stock table
         const [stockUpdated] = await db.query(updateStockQuery, [quantity, updatedStockImeiNumbers, store_name, product_id, quantity]);
 
-        // First, add the customer using the addCustomer function
-        const customer_id = await addCustomerpera(customer_details);  // Assuming the addCustomer function returns a customer_id
-
+       
         if (stockUpdated.affectedRows === 0) {
           throw new Error(`Failed to update stock for product ${product_id} in store ${store_name}.`);
         }
