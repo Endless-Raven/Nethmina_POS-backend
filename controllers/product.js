@@ -43,7 +43,7 @@ const additem = async (req, res) => {
         // Step 4: Update the stock table for this store
         const checkStockQuery = `SELECT * FROM stock WHERE product_id = ? AND store_name = ?`;
         const [existingStock] = await db.query(checkStockQuery, [product[0].product_id, storeName]);
-
+        
         if (existingStock.length > 0) {
           // Update the existing stock record
           const updatedImeiNumbersInStock = existingStock[0].imei_numbers
@@ -90,7 +90,7 @@ const additem = async (req, res) => {
       const productValues = [
        req.body.product_name,
         req.body.product_price,
-        req.body.waranty_period,
+        req.body.warranty_period,
         req.body.imei_number,
         req.body.product_stock,
         req.body.product_type,

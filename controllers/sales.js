@@ -58,7 +58,8 @@ const getStoreNameByUser = async (user_id) => {
 // Function to make a sale
 const makesale = async (req, res) => {
   try {
-    const { cashier_id, sales_person, total_amount, products, user ,customer_details } = req.body;
+    const { cashier_id, sales_person, total_amount, products, user, customer_details } = req.body;
+
 
      // First, add the customer using the addCustomer function
      const customer_id = await addCustomerpera(customer_details);  // Assuming the addCustomer function returns a customer_id
@@ -82,8 +83,8 @@ const makesale = async (req, res) => {
     console.log(sales_id);
     
     const salesItemQuery = `
-      INSERT INTO sales_items (sale_id, product_id, item_quantity, item_price, imei_number, discount)
-      VALUES (?, ?, ?, ?, ?, ?);
+      INSERT INTO sales_items (sale_id, product_id, item_quantity, item_price, imei_number, discount, warranty_period)
+      VALUES (?, ?, ?, ?, ?, ?, ?);
     `;
 
     const updateProductStockAndImeiQuery = `
@@ -101,21 +102,22 @@ const makesale = async (req, res) => {
 
     // Loop through each product to process the sale
     for (const product of products) {
-      const { product_id, item_quantity, item_price, imei_number, discount } = product;
+      const { product_id, quantity, price, serial_number, discount, warranty_period } = product;
 
       try {
-        // Insert into sales_items table
-        await db.query(salesItemQuery, [sales_id, product_id, item_quantity, item_price, imei_number, discount]);
+        // Insert into sales_items table (using `imei_number` in the database)
+        await db.query(salesItemQuery, [sales_id, product_id, quantity, price, serial_number, discount, warranty_period]);
 
         // Fetch current IMEI numbers from the products table
         const [currentImeiResult] = await db.query("SELECT imei_number FROM products WHERE product_id = ?", [product_id]);
         const currentImeiNumbers = currentImeiResult[0]?.imei_number.split(",") || [];
+        console.log(quantity);
 
-        // Remove the sold IMEI number from the list
-        const updatedImeiNumbers = currentImeiNumbers.filter(imei => imei !== imei_number).join(",");
+        // Remove the sold serial number from the list
+        const updatedImeiNumbers = currentImeiNumbers.filter(imei => imei !== serial_number).join(",");
 
-        // Update stock and IMEI in the products table
-        const [productStockUpdated] = await db.query(updateProductStockAndImeiQuery, [item_quantity, updatedImeiNumbers, product_id, item_quantity]);
+        // Update stock and IMEI number in the products table
+        const [productStockUpdated] = await db.query(updateProductStockAndImeiQuery, [quantity, updatedImeiNumbers, product_id, quantity]);
 
         if (productStockUpdated.affectedRows === 0) {
           throw new Error(`Insufficient product stock for product ${product_id}.`);
@@ -125,12 +127,13 @@ const makesale = async (req, res) => {
         const [currentStockImeiResult] = await db.query("SELECT imei_numbers FROM stock WHERE store_name = ? AND product_id = ?", [store_name, product_id]);
         const currentStockImeiNumbers = currentStockImeiResult[0]?.imei_numbers.split(",") || [];
 
-        // Remove the sold IMEI number from stock's IMEI list
-        const updatedStockImeiNumbers = currentStockImeiNumbers.filter(imei => imei !== imei_number).join(",");
+        // Remove the sold serial number from stock's IMEI list
+        const updatedStockImeiNumbers = currentStockImeiNumbers.filter(imei => imei !== serial_number).join(",");
 
-        // Update stock_quantity and IMEI in the stock table
-        const [stockUpdated] = await db.query(updateStockQuery, [item_quantity, updatedStockImeiNumbers, store_name, product_id, item_quantity]);
+        // Update stock_quantity and IMEI number in the stock table
+        const [stockUpdated] = await db.query(updateStockQuery, [quantity, updatedStockImeiNumbers, store_name, product_id, quantity]);
 
+       
         if (stockUpdated.affectedRows === 0) {
           throw new Error(`Failed to update stock for product ${product_id} in store ${store_name}.`);
         }
@@ -148,7 +151,6 @@ const makesale = async (req, res) => {
     return res.status(500).json({ message: "Error inside server during sales processing.", err });
   }
 };
-
 
 
 
