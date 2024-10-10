@@ -17,6 +17,10 @@ const stockRoutes = require("./routes/stock");
 app.use(cors());
 app.use(express.json());
 
+// Root route
+app.get('/', (req, res) => {
+  res.send('Welcome to the Nethmina POS backend!'); // Welcome message
+});
 
 app.use("/sales", salesRoutes);
 app.use("/product", productRoutes);
