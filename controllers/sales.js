@@ -60,9 +60,8 @@ const makesale = async (req, res) => {
   try {
     const { cashier_id, sales_person, total_amount, products, user, customer_details } = req.body;
 
-
-     // First, add the customer using the addCustomer function
-     const customer_id = await addCustomerpera(customer_details);  // Assuming the addCustomer function returns a customer_id
+    // First, add the customer using the addCustomer function
+    const customer_id = await addCustomerpera(customer_details);  // Assuming the addCustomer function returns a customer_id
 
     // Retrieve store_name based on user (user_id)
     const store_name = await getStoreNameByUser(user);
@@ -81,7 +80,7 @@ const makesale = async (req, res) => {
 
     await db.query(salesQuery, [sales_id, cashier_id, sales_person, total_amount]);
     console.log(sales_id);
-    
+
     const salesItemQuery = `
       INSERT INTO sales_items (sale_id, product_id, item_quantity, item_price, imei_number, discount, warranty_period)
       VALUES (?, ?, ?, ?, ?, ?, ?);
@@ -93,7 +92,6 @@ const makesale = async (req, res) => {
       WHERE product_id = ? AND product_stock >= ?;
     `;
 
-    // Query for updating the stock table
     const updateStockQuery = `
       UPDATE stock
       SET stock_quantity = stock_quantity - ?, imei_numbers = ?
@@ -104,19 +102,24 @@ const makesale = async (req, res) => {
     for (const product of products) {
       const { product_id, quantity, price, serial_number, discount, warranty_period } = product;
 
-      try {
-        // Insert into sales_items table (using `imei_number` in the database)
-        await db.query(salesItemQuery, [sales_id, product_id, quantity, price, serial_number, discount, warranty_period]);
+      // Check if the product type is 'mobile_phone'
+      const [productTypeResult] = await db.query("SELECT product_type FROM products WHERE product_id = ?", [product_id]);
+      const productType = productTypeResult[0]?.product_type;
 
+      if (productType === "Mobile Phone") {
         // Fetch current IMEI numbers from the products table
         const [currentImeiResult] = await db.query("SELECT imei_number FROM products WHERE product_id = ?", [product_id]);
         const currentImeiNumbers = currentImeiResult[0]?.imei_number.split(",") || [];
-        console.log(quantity);
+
+        // Check if the provided serial number (IMEI) exists in the current list
+        if (!currentImeiNumbers.includes(serial_number)) {
+          return res.status(400).json({ message: `Invalid IMEI number for product ${product_id}. Sale not allowed.` });
+        }
 
         // Remove the sold serial number from the list
         const updatedImeiNumbers = currentImeiNumbers.filter(imei => imei !== serial_number).join(",");
 
-        // Update stock and IMEI number in the products table
+        // Proceed with the sale for mobile phones after checking the IMEI
         const [productStockUpdated] = await db.query(updateProductStockAndImeiQuery, [quantity, updatedImeiNumbers, product_id, quantity]);
 
         if (productStockUpdated.affectedRows === 0) {
@@ -133,14 +136,25 @@ const makesale = async (req, res) => {
         // Update stock_quantity and IMEI number in the stock table
         const [stockUpdated] = await db.query(updateStockQuery, [quantity, updatedStockImeiNumbers, store_name, product_id, quantity]);
 
-       
         if (stockUpdated.affectedRows === 0) {
           throw new Error(`Failed to update stock for product ${product_id} in store ${store_name}.`);
         }
+      } else {
+        // For non-mobile products, proceed normally
+        await db.query(salesItemQuery, [sales_id, product_id, quantity, price, serial_number, discount, warranty_period]);
 
-      } catch (err) {
-        console.error(`Error processing product ${product_id}:`, err.message);
-        return res.status(500).json({ message: `Error processing product ${product_id}.`, err });
+        // Update stock for non-mobile products
+        const [productStockUpdated] = await db.query(updateProductStockAndImeiQuery, [quantity, null, product_id, quantity]);
+
+        if (productStockUpdated.affectedRows === 0) {
+          throw new Error(`Insufficient product stock for product ${product_id}.`);
+        }
+
+        const [stockUpdated] = await db.query(updateStockQuery, [quantity, null, store_name, product_id, quantity]);
+
+        if (stockUpdated.affectedRows === 0) {
+          throw new Error(`Failed to update stock for product ${product_id} in store ${store_name}.`);
+        }
       }
     }
 

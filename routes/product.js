@@ -9,7 +9,10 @@ const { additem ,
      getBrandsByProductType ,
       getProductModelsByBrandName , 
       getFilteredProductDetails ,
-      searchProductsByName
+      searchProductsByName,
+      searchProductsByType,
+      searchProductsByBrand,
+      searchProductsByModel
     } = require("../controllers/product");
 
 
@@ -32,7 +35,9 @@ router.post("/getFiltered/ProductDetails",getFilteredProductDetails); //get prod
 
 
 router.get("/searchProductsBy/Name",searchProductsByName); //get products name for search bar
-
+router.get("/searchProductsBy/Type",searchProductsByType); //get products Type for search bar
+router.get("/searchProductsBy/Brand",searchProductsByBrand); //get products Brand for search bar
+router.get("/searchProductsBy/Model",searchProductsByModel); //get products Model for search bar
 
 
 
