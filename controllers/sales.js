@@ -60,27 +60,54 @@ const makesale = async (req, res) => {
   try {
     const { cashier_id, sales_person, total_amount, products, user, customer_details } = req.body;
 
-    // First, add the customer using the addCustomer function
-    const customer_id = await addCustomerpera(customer_details);  // Assuming the addCustomer function returns a customer_id
+    // Step 1: Validate customer details (check phone number)
+    const customerPhoneNumber = customer_details.customer_phone_number;
 
-    // Retrieve store_name based on user (user_id)
+    if (!customerPhoneNumber) {
+      return res.status(400).json({ message: "Customer phone number is required." });
+    }
+
+    // Check if customer already exists by phone number
+    const [customer] = await db.query("SELECT customer_id FROM customers WHERE customer_phone_number = ?", [customerPhoneNumber]);
+
+    let customer_id;
+    if (customer.length === 0) {
+      // If customer not found, insert new customer
+      const insertCustomerQuery = `
+        INSERT INTO customers (customer_name, customer_phone_number, customer_address) 
+        VALUES (?, ?, ?);
+      `;
+      const result = await db.query(insertCustomerQuery, [customer_details.customer_name, customerPhoneNumber, customer_details.customer_address]);
+      customer_id = result.insertId;  // Use the new customer ID from the inserted record
+      console.log(`New customer inserted with ID: ${customer_id}`);
+    } else {
+      customer_id = customer[0].customer_id;
+      console.log(`Customer ID: ${customer_id}`);
+    }
+
+    // Step 2: Retrieve store_name based on user (user_id)
     const store_name = await getStoreNameByUser(user);
+    if (!store_name) {
+      return res.status(400).json({ message: "Store not found for the given user." });
+    }
     console.log(`Store name for user ${user}: ${store_name}`);
 
-    const sales_id = await generateNextId(store_name); // Pass store_name
+    // Step 3: Generate the sales_id based on store_name
+    const sales_id = await generateNextId(store_name); // Pass store_name to generate ID
 
     if (!sales_id) {
       return res.status(500).json({ message: "Failed to generate sales ID." });
     }
 
+    // Step 4: Insert into sales table
     const salesQuery = `
-      INSERT INTO sales (sale_id, cashier_id, sales_person, total_amount)
-      VALUES (?, ?, ?, ?);
+      INSERT INTO sales (sale_id, cashier_id, sales_person, total_amount, customer_id)
+      VALUES (?, ?, ?, ?, ?);
     `;
+    await db.query(salesQuery, [sales_id, cashier_id, sales_person, total_amount, customer_id]);
+    console.log(`Sales ID: ${sales_id}`);
 
-    await db.query(salesQuery, [sales_id, cashier_id, sales_person, total_amount]);
-    console.log(sales_id);
-
+    // Step 5: Insert into sales_items and update product and stock
     const salesItemQuery = `
       INSERT INTO sales_items (sale_id, product_id, item_quantity, item_price, imei_number, discount, warranty_period)
       VALUES (?, ?, ?, ?, ?, ?, ?);
@@ -98,52 +125,45 @@ const makesale = async (req, res) => {
       WHERE store_name = ? AND product_id = ? AND stock_quantity >= ?;
     `;
 
-    // Loop through each product to process the sale
     for (const product of products) {
       const { product_id, quantity, price, serial_number, discount, warranty_period } = product;
 
-      // Check if the product type is 'mobile_phone'
+      // Check product type (e.g., mobile phones)
       const [productTypeResult] = await db.query("SELECT product_type FROM products WHERE product_id = ?", [product_id]);
       const productType = productTypeResult[0]?.product_type;
 
       if (productType === "Mobile Phone") {
-        // Fetch current IMEI numbers from the products table
+        // Handle IMEI numbers for mobile phones
         const [currentImeiResult] = await db.query("SELECT imei_number FROM products WHERE product_id = ?", [product_id]);
         const currentImeiNumbers = currentImeiResult[0]?.imei_number.split(",") || [];
 
-        // Check if the provided serial number (IMEI) exists in the current list
         if (!currentImeiNumbers.includes(serial_number)) {
           return res.status(400).json({ message: `Invalid IMEI number for product ${product_id}. Sale not allowed.` });
         }
 
-        // Remove the sold serial number from the list
         const updatedImeiNumbers = currentImeiNumbers.filter(imei => imei !== serial_number).join(",");
 
-        // Proceed with the sale for mobile phones after checking the IMEI
+        // Update product stock and IMEI
         const [productStockUpdated] = await db.query(updateProductStockAndImeiQuery, [quantity, updatedImeiNumbers, product_id, quantity]);
 
         if (productStockUpdated.affectedRows === 0) {
           throw new Error(`Insufficient product stock for product ${product_id}.`);
         }
 
-        // Fetch current IMEI numbers from the stock table
         const [currentStockImeiResult] = await db.query("SELECT imei_numbers FROM stock WHERE store_name = ? AND product_id = ?", [store_name, product_id]);
         const currentStockImeiNumbers = currentStockImeiResult[0]?.imei_numbers.split(",") || [];
 
-        // Remove the sold serial number from stock's IMEI list
         const updatedStockImeiNumbers = currentStockImeiNumbers.filter(imei => imei !== serial_number).join(",");
 
-        // Update stock_quantity and IMEI number in the stock table
         const [stockUpdated] = await db.query(updateStockQuery, [quantity, updatedStockImeiNumbers, store_name, product_id, quantity]);
 
         if (stockUpdated.affectedRows === 0) {
           throw new Error(`Failed to update stock for product ${product_id} in store ${store_name}.`);
         }
       } else {
-        // For non-mobile products, proceed normally
+        // Handle non-mobile products
         await db.query(salesItemQuery, [sales_id, product_id, quantity, price, serial_number, discount, warranty_period]);
 
-        // Update stock for non-mobile products
         const [productStockUpdated] = await db.query(updateProductStockAndImeiQuery, [quantity, null, product_id, quantity]);
 
         if (productStockUpdated.affectedRows === 0) {
@@ -158,6 +178,7 @@ const makesale = async (req, res) => {
       }
     }
 
+    // If all inserts and updates are successful, return the response
     return res.status(200).json({ message: "Sales and items added successfully.", sales_id });
 
   } catch (err) {
@@ -165,6 +186,7 @@ const makesale = async (req, res) => {
     return res.status(500).json({ message: "Error inside server during sales processing.", err });
   }
 };
+
 
 
 
