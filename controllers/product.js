@@ -7,9 +7,9 @@ const additem = async (req, res) => {
   // Step 1: Check if the product already exists by product_name
   const checkProductQuery = `SELECT imei_number, product_stock, product_id FROM products WHERE product_name = ?`;
   const getStoreNameQuery = `SELECT s.store_name FROM users u JOIN stores s ON u.store_id = s.store_id WHERE u.user_id = ?`;
-  
+
   try {
-    // Fetch store_name by username from req.body (assuming req.body.username contains the username)
+    // Fetch store_name by user from req.body (assuming req.body.user contains the user_id)
     const [store] = await db.query(getStoreNameQuery, [req.body.user]);
 
     if (store.length === 0) {
@@ -19,36 +19,38 @@ const additem = async (req, res) => {
     const storeName = store[0].store_name;
 
     const [product] = await db.query(checkProductQuery, [req.body.product_name]);
-    
+
+    const newImeiNumbers = req.body.imei_numbers;  // Assuming imei_numbers is an array in req.body
+
     if (product.length > 0) {
-      // Step 2: Product exists, check IMEI number
+      // Step 2: Product exists, check IMEI numbers
       const existingImeiNumbers = product[0].imei_number ? product[0].imei_number.split(",") : [];
 
-      if (existingImeiNumbers.includes(req.body.imei_number)) {
-        // If IMEI number already exists, return a message and don't add the product
-        return res.status(400).json({ message: "Product and IMEI number already exist." });
+      // Check if any of the IMEI numbers already exist in the product
+      const duplicateImeiNumbers = newImeiNumbers.filter(imei => existingImeiNumbers.includes(imei));
+
+      if (duplicateImeiNumbers.length > 0) {
+        return res.status(400).json({ message: `The following IMEI numbers already exist: ${duplicateImeiNumbers.join(", ")}` });
       } else {
-        // Step 3: IMEI number is new, append it to the existing list and update the stock
-        const newImeiNumbers = [...existingImeiNumbers, req.body.imei_number];
-        const updatedImeiNumbers = newImeiNumbers.join(",");
+        // Step 3: Append new IMEI numbers to the existing list and update the stock
+        const updatedImeiNumbers = [...existingImeiNumbers, ...newImeiNumbers].join(",");
 
         const updateProductQuery = `
           UPDATE products
           SET imei_number = ?, product_stock = product_stock + ?
           WHERE product_name = ?;
         `;
-        
         await db.query(updateProductQuery, [updatedImeiNumbers, req.body.product_stock, req.body.product_name]);
 
         // Step 4: Update the stock table for this store
         const checkStockQuery = `SELECT * FROM stock WHERE product_id = ? AND store_name = ?`;
         const [existingStock] = await db.query(checkStockQuery, [product[0].product_id, storeName]);
-        
+
         if (existingStock.length > 0) {
           // Update the existing stock record
           const updatedImeiNumbersInStock = existingStock[0].imei_numbers
-            ? existingStock[0].imei_numbers.split(",").concat(req.body.imei_number).join(",")
-            : req.body.imei_number;
+            ? existingStock[0].imei_numbers.split(",").concat(newImeiNumbers).join(",")
+            : newImeiNumbers.join(",");
 
           const updateStockQuery = `
             UPDATE stock
@@ -71,34 +73,36 @@ const additem = async (req, res) => {
             storeName,
             product[0].product_id,
             req.body.product_stock,
-            req.body.imei_number,
+            newImeiNumbers.join(","),
           ]);
         }
 
         return res.status(200).json({
-          message: "IMEI number added, product stock updated, and stock updated for the store.",
+          message: "IMEI numbers added, product stock updated, and stock updated for the store.",
           updatedImeiNumbers,
         });
       }
     } else {
       // Step 5: Product doesn't exist, insert it as a new product
       const insertProductQuery = `
-        INSERT INTO products (product_name, product_price, warranty_period, imei_number, product_stock, product_type, product_model, brand_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO products (product_name, product_price, warranty_period, imei_number, product_stock, product_type, product_model, brand_name ,product_wholesale_price)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?,?)
       `;
 
       const productValues = [
-       req.body.product_name,
+        req.body.product_name,
         req.body.product_price,
         req.body.warranty_period,
-        req.body.imei_number,
+        newImeiNumbers.join(","), // Join array to string
         req.body.product_stock,
         req.body.product_type,
         req.body.product_model,
         req.body.brand_name,
+        req.body.product_wholesale_price
       ];
 
       const [insertedProduct] = await db.query(insertProductQuery, productValues);
+      console.log("Inserted Product ID:", insertedProduct.insertId); // Ensure this is correct
 
       // Step 6: Add entry to the stock table for the new product
       const insertStockQuery = `
@@ -109,9 +113,9 @@ const additem = async (req, res) => {
         storeName,
         insertedProduct.insertId, // Product ID from the newly inserted product
         req.body.product_stock,
-        req.body.imei_number,
+        newImeiNumbers.join(","), // Join array to string
       ]);
-
+console.log("as",insertedProduct.insertId)
       return res.status(200).json({
         message: "New product added successfully and stock updated for the store.",
       });
@@ -265,6 +269,101 @@ const searchProductsByName = async (req, res) => {
 };
 
 
+const searchProductsByType = async (req, res) => {
+  const { searchText } = req.query; // Get the search text from the query parameters
+
+  if (!searchText) {
+    return res.status(400).json({ message: "Search text is required." });
+  }
+
+  const sql = "SELECT DISTINCT product_type FROM products WHERE product_type LIKE ?";
+
+  try {
+    // Execute the SQL query
+    const [rows] = await db.query(sql, [`%${searchText}%`]);
+
+    // Check if any product types are found
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "No product types found." });
+    }
+
+    // Map the result to extract only product types
+    const productTypes = rows.map(row => row.product_type);
+
+    // Return the product types as an array
+    return res.json(productTypes);
+  } catch (err) {
+    console.error("Error fetching product types:", err.message);
+    return res.status(500).json({ message: "Error inside server during product type search.", err });
+  }
+};
+
+
+
+const searchProductsByModel = async (req, res) => {
+  const { searchText } = req.query; // Get the search text from the query parameters
+  console.log(searchText);
+  
+  if (!searchText) {
+    return res.status(400).json({ message: "Search text is required." });
+  }
+
+  const sql = "SELECT DISTINCT product_model FROM products WHERE product_model LIKE ?";
+
+  try {
+    // Execute the SQL query
+    const [rows] = await db.query(sql, [`%${searchText}%`]);
+
+    // Check if any product models are found
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "No product models found." });
+    }
+
+    // Map the result to extract only product models
+    const productModels = rows.map(row => row.product_model);
+
+    // Return the product models as an array
+    return res.json(productModels);
+  } catch (err) {
+    console.error("Error fetching product models:", err.message);
+    return res.status(500).json({ message: "Error inside server during product model search.", err });
+  }
+};
+
+
+
+
+
+const searchProductsByBrand = async (req, res) => {
+  const { searchText } = req.query; // Get the search text from the query parameters
+console.log(searchText);
+  if (!searchText) {
+    return res.status(400).json({ message: "Search text is required." });
+  }
+
+  const sql = "SELECT DISTINCT brand_name FROM products WHERE brand_name LIKE ?";
+
+  try {
+    // Execute the SQL query
+    const [rows] = await db.query(sql, [`%${searchText}%`]);
+
+    // Check if any brand names are found
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "No brand names found." });
+    }
+
+    // Map the result to extract only brand names
+    const brandNames = rows.map(row => row.brand_name);
+
+    // Return the brand names as an array
+    return res.json(brandNames);
+  } catch (err) {
+    console.error("Error fetching brand names:", err.message);
+    return res.status(500).json({ message: "Error inside server during brand name search.", err });
+  }
+};
+
+
 
 
 
@@ -381,7 +480,10 @@ module.exports = {
     getBrandsByProductType,
     getProductModelsByBrandName,
     getFilteredProductDetails,
-    searchProductsByName
+    searchProductsByName,
+    searchProductsByBrand,
+    searchProductsByType,
+    searchProductsByModel
   };
   
 
