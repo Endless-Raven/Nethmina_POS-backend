@@ -4,6 +4,10 @@ const db = require("../config/db");
 const additem = async (req, res) => {
   console.log("Request body", req.body);
 
+  // Step 0: Check if the product_name exists in the request body
+  if (!req.body.product_name) {
+    return res.status(400).json({ message: "Product name is required." });
+  }
   // Step 1: Check if the product already exists by product_name
   const checkProductQuery = `SELECT imei_number, product_stock, product_id FROM products WHERE product_name = ?`;
   const getStoreNameQuery = `SELECT s.store_name FROM users u JOIN stores s ON u.store_id = s.store_id WHERE u.user_id = ?`;
