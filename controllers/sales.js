@@ -62,7 +62,7 @@ const makesale = async (req, res) => {
 
     // Step 1: Validate customer details (check phone number)
     const customerPhoneNumber = customer_details.customer_phone_number;
-
+console.log(customerPhoneNumber);
     if (!customerPhoneNumber) {
       return res.status(400).json({ message: "Customer phone number is required." });
     }
@@ -78,8 +78,8 @@ const makesale = async (req, res) => {
         VALUES (?, ?, ?);
       `;
       const result = await db.query(insertCustomerQuery, [customer_details.customer_name, customerPhoneNumber, customer_details.customer_address]);
-      customer_id = result.insertId;  // Use the new customer ID from the inserted record
-      console.log(`New customer inserted with ID: ${customer_id}`);
+      customer_id = result[0].insertId;  // Use the new customer ID from the inserted record
+      console.log(customer_id);
     } else {
       customer_id = customer[0].customer_id;
       console.log(`Customer ID: ${customer_id}`);
@@ -92,14 +92,28 @@ const makesale = async (req, res) => {
     }
     console.log(`Store name for user ${user}: ${store_name}`);
 
-    // Step 3: Generate the sales_id based on store_name
+    // Step 3: Check stock availability for all products
+    for (const product of products) {
+      const { product_id, quantity } = product;
+
+      const [stockResult] = await db.query(
+        "SELECT stock_quantity FROM stock WHERE store_name = ? AND product_id = ?",
+        [store_name, product_id]
+      );
+
+      if (stockResult.length === 0 || stockResult[0].stock_quantity < quantity) {
+        return res.status(400).json({ message: `Insufficient stock for product ID: ${product_id}. Sale not allowed.` });
+      }
+    }
+
+    // Step 4: Generate the sales_id based on store_name
     const sales_id = await generateNextId(store_name); // Pass store_name to generate ID
 
     if (!sales_id) {
       return res.status(500).json({ message: "Failed to generate sales ID." });
     }
 
-    // Step 4: Insert into sales table
+    // Step 5: Insert into sales table
     const salesQuery = `
       INSERT INTO sales (sale_id, cashier_id, sales_person, total_amount, customer_id)
       VALUES (?, ?, ?, ?, ?);
@@ -107,7 +121,7 @@ const makesale = async (req, res) => {
     await db.query(salesQuery, [sales_id, cashier_id, sales_person, total_amount, customer_id]);
     console.log(`Sales ID: ${sales_id}`);
 
-    // Step 5: Insert into sales_items and update product and stock
+    // Step 6: Insert into sales_items and update product and stock
     const salesItemQuery = `
       INSERT INTO sales_items (sale_id, product_id, item_quantity, item_price, imei_number, discount, warranty_period)
       VALUES (?, ?, ?, ?, ?, ?, ?);
@@ -186,6 +200,7 @@ const makesale = async (req, res) => {
     return res.status(500).json({ message: "Error inside server during sales processing.", err });
   }
 };
+
 
 
 
