@@ -2,10 +2,6 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 const database = require("./config/db");
-const path = require('path');
-const fs = require('fs')
-
-const file = fs.readFileSync('./392E2CF1BDBE028C1CDB993D4B3EF153.txt')
 
 const salesRoutes = require("./routes/sales");
 const productRoutes = require("./routes/product");
@@ -17,19 +13,14 @@ const warrantyRoutes = require("./routes/warranty");
 const stockRoutes = require("./routes/stock");
 
 
-app.use(cors());
-app.use(express.json());
-
-// Root route
-const filePath = path.resolve(__dirname, '392E2CF1BDBE028C1CDB993D4B3EF153.txt');
 
 app.use(cors());
 app.use(express.json());
 
 // Root route
-app.get('/.well-known/pki-validation/392E2CF1BDBE028C1CDB993D4B3EF153.txt', (req, res) => {
-  res.sendFile(filePath);
-})
+app.get('/', (req, res) => {
+  res.send('Welcome to the Nethmina POS backend!'); // Welcome message
+});
 
 app.use("/sales", salesRoutes);
 app.use("/product", productRoutes);
