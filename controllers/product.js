@@ -407,7 +407,7 @@ const getitembyid = async (req,res) =>{
             if (rows.length === 0) {
               return res.status(404).json({ message: "Product not found." }); // Handle case where no product is found
             }
-        
+        console.log(rows);
             return res.json(rows[0]); // Return the found product
           } catch (err) {
             console.error("Error fetching product:", err.message);
@@ -423,7 +423,7 @@ const updateitem = async (req,res) =>{
 
     const sql = `
       UPDATE products 
-      SET product_name=? , product_price=?  , warranty_period=? , imei_number =? , product_stock =? , product_type =? , brand_name =?
+      SET product_name=? , product_price=?  , warranty_period=? , imei_number =? , product_stock =? , product_type =? , brand_name =? , product_wholesale_price =?
       WHERE product_name = ?
     `;
   
@@ -432,11 +432,12 @@ const updateitem = async (req,res) =>{
     const values = [
       req.body.product_name,
       req.body.product_price,
-      req.body.waranty_period,
+      req.body.warranty_period,
       req.body.imei_number,
       req.body.product_stock,
       req.body.product_type,
       req.body.brand_name,
+      req.body.product_wholesale_price,
       product_name,
 
     ];
