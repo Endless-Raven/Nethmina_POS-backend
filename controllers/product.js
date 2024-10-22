@@ -473,6 +473,107 @@ const deleteitem = async (req,res) =>{
 };
 
 
+const updateStockAndIMEI = async (req, res) => {
+  console.log("Request body:", req.body); // Log the request body
+
+  // SQL queries for fetching and updating the product in `products` table
+  const sqlSelectProduct = `
+    SELECT product_stock, imei_number, product_id
+    FROM products 
+    WHERE product_name = ?
+  `;
+
+  const sqlUpdateProduct = `
+    UPDATE products 
+    SET product_stock = ?, imei_number = ?
+    WHERE product_name = ?
+  `;
+
+  // SQL queries for fetching and updating the stock in `stock` table
+  const sqlSelectStock = `
+    SELECT stock_quantity, imei_numbers 
+    FROM stock 
+    WHERE product_id = ? AND store_name = ?
+  `;
+
+  const sqlUpdateStock = `
+    UPDATE stock 
+    SET stock_quantity = ?, imei_numbers = ?
+    WHERE product_id = ? AND store_name = ?
+  `;
+
+  const { product_name } = req.params; // Extract product_name from the request URL
+  const { product_stock, imei_number, user } = req.body; // Extract new stock and IMEI numbers
+  const getStoreNameQuery = `SELECT s.store_name FROM users u JOIN stores s ON u.store_id = s.store_id WHERE u.user_id = ?`;
+
+  try {
+    // Step 1: Fetch store_name for the user
+    const [store] = await db.query(getStoreNameQuery, [user]);
+    if (store.length === 0) {
+      return res.status(400).json({ message: "Store not found for the given user." });
+    }
+    const storeName = store[0].store_name;
+
+    // Step 2: Fetch existing stock and IMEI numbers from products table
+    const [product] = await db.query(sqlSelectProduct, [product_name]);
+    if (product.length === 0) {
+      return res.status(404).json({ message: "Product not found." });
+    }
+
+    let currentStock = Number(product[0].product_stock);
+    let currentIMEINumbers = product[0].imei_number ? product[0].imei_number.split(",") : [];
+    const productId = product[0].product_id;
+
+    // Step 3: Merge new IMEI numbers with existing ones
+    const newIMEINumbers = Array.isArray(imei_number) ? imei_number : [imei_number];
+    const updatedIMEINumbers = [...currentIMEINumbers, ...newIMEINumbers].join(",");
+
+    // Step 4: Update stock in products table by adding new quantity
+    const updatedStock = currentStock + Number(product_stock);
+    await db.query(sqlUpdateProduct, [updatedStock, updatedIMEINumbers, product_name]);
+
+    // Step 5: Fetch current stock data for the store from stock table
+    const [stock] = await db.query(sqlSelectStock, [productId, storeName]);
+    if (stock.length > 0) {
+      // Stock entry exists for this store, so update the record
+      let currentStockQuantity = Number(stock[0].stock_quantity);
+      let existingIMEINumbersInStock = stock[0].imei_numbers ? stock[0].imei_numbers.split(",") : [];
+
+      // Merge IMEI numbers and update stock quantity
+      const updatedStockQuantityInStore = currentStockQuantity + Number(product_stock);
+      const updatedIMEINumbersInStore = [...existingIMEINumbersInStock, ...newIMEINumbers].join(",");
+
+      await db.query(sqlUpdateStock, [
+        updatedStockQuantityInStore,
+        updatedIMEINumbersInStore,
+        productId,
+        storeName,
+      ]);
+    } else {
+      // No stock entry for this product/store, insert a new record
+      const sqlInsertStock = `
+        INSERT INTO stock (store_name, product_id, stock_quantity, imei_numbers)
+        VALUES (?, ?, ?, ?)
+      `;
+      await db.query(sqlInsertStock, [
+        storeName,
+        productId,
+        product_stock,
+        newIMEINumbers.join(","),
+      ]);
+    }
+
+    return res.status(200).json({ message: "Stock and IMEI numbers updated successfully in both products and stock tables." });
+
+  } catch (err) {
+    console.error("Error updating Product and Stock:", err.message); // Log any error messages
+    return res.status(500).json({ message: "Error inside server.", err });
+  }
+};
+
+
+
+
 
 
 module.exports = {
@@ -488,7 +589,8 @@ module.exports = {
     searchProductsByName,
     searchProductsByBrand,
     searchProductsByType,
-    searchProductsByModel
+    searchProductsByModel,
+    updateStockAndIMEI
   };
   
 
