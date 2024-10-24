@@ -146,11 +146,6 @@ const getstorenames = async (req, res) => {
     }
 };
 
-
-
-
-
-  
 module.exports = {
     addStore,
     getStore,
