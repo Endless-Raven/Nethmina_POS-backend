@@ -11,6 +11,7 @@ const customerRoutes = require("./routes/customer");
 const cashierRoutes = require("./routes/cashier");
 const warrantyRoutes = require("./routes/warranty");
 const stockRoutes = require("./routes/stock");
+const dashboardRoutes = require("./routes/dashboard");
 
 
 
@@ -30,6 +31,7 @@ app.use("/customers", customerRoutes);
 app.use("/cashiers", cashierRoutes);
 app.use("/warranty", warrantyRoutes);
 app.use("/stock", stockRoutes);
+app.use("/dashboard", dashboardRoutes);
 
 
 
