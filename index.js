@@ -13,6 +13,7 @@ const warrantyRoutes = require("./routes/warranty");
 const stockRoutes = require("./routes/stock");
 const dashboardRoutes = require("./routes/dashboard");
 const incomeRoutes = require("./routes/income");
+const expenseRoutes = require("./routes/expense");
 
 app.use(cors());
 app.use(express.json());
@@ -32,6 +33,7 @@ app.use("/warranty", warrantyRoutes);
 app.use("/stock", stockRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/income", incomeRoutes);
+app.use("/expense", expenseRoutes);
 
 
 app.listen(3000, () => {
