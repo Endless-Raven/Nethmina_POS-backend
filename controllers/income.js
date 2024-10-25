@@ -43,6 +43,23 @@ const getIncomeCategoryAndAmount = async (req, res) => {
     }
 };
 
+const addIncomeCategoryAndAmount = async (req, res) => {
+    const { income_category, income_amount } = req.body; // Extracting data from the request body
+
+    // SQL query to insert a new income category and amount
+    const sql = `INSERT INTO income (income_category, income_amount)
+                 VALUES (?, ?)`;
+
+    const values = [income_category, income_amount];
+
+    try {
+        await db.query(sql, values);
+        return res.status(201).json({ message: "Income category and amount added successfully." });
+    } catch (err) {
+        console.error("Error saving income category and amount:", err.message);
+        return res.status(500).json({ message: "Error saving income category and amount", err });
+    }
+};
 
 const addIncome = async (req, res) => {
     const { income_category, income_amount, income_type,approval_status, user_id, store_id } = req.body; // user_id and store_id should be sent in the request body
@@ -120,6 +137,7 @@ module.exports = {
     getIncomes,
     getIncomeById,
     getIncomeCategoryAndAmount,
+    addIncomeCategoryAndAmount,
     addIncome,
     updateIncome,
     deleteIncome,
