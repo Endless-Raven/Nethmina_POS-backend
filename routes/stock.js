@@ -1,6 +1,17 @@
 const express = require("express");
 
-const {manageStock , getStockByProductAndStore, getStoresAndCategories, getBrandsByCategory, getProductsByCategoryAndBrand, transferStock, getTransferDetails } = require("../controllers/stock");
+const {manageStock ,
+     getStockByProductAndStore,
+     getStoresAndCategories,
+     getBrandsByCategory,
+     getProductsByCategoryAndBrand,
+     transferStock,
+     getTransferDetails,
+     requestProduct,
+     getProductRequests,
+     deleteRequest,
+     getAllTransfers,
+     markTransferAsRead} = require("../controllers/stock");
 
 const router = express.Router();
 
@@ -13,6 +24,12 @@ router.get('/getBrandsByCategory/:category', getBrandsByCategory);//get the bran
 router.get('/getProductsByCategoryAndBrand', getProductsByCategoryAndBrand);//get all products by category and brand
 router.post('/transferStock', transferStock);
 router.get('/getTransferDetails', getTransferDetails);//get transfer details
+router.post("/requestproduct", requestProduct);            //sent product request
+router.get("/getProductRequests", getProductRequests);     //get product requests 4
+router.delete("/deleteRequest", deleteRequest);             //delete reqest
+router.get("/getallTransfers", getAllTransfers);            //get all transfer details
+router.put("/markTransferAsRead", markTransferAsRead);      //mark as read transfer request
+
 
 
 
