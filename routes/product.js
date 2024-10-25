@@ -13,7 +13,8 @@ const { additem ,
       searchProductsByType,
       searchProductsByBrand,
       searchProductsByModel,
-      updateStockAndIMEI
+      updateStockAndIMEI,
+      getProductDetails
     } = require("../controllers/product");
 
 
@@ -44,6 +45,7 @@ router.get("/searchProductsBy/Model",searchProductsByModel); //get products Mode
 
 router.put("/updateStockAndIMEI/:product_name",updateStockAndIMEI ); //update item StockAndIMEI 
 
+router.get("/track/ProductDetails",getProductDetails ); //update item StockAndIMEI 
 
 
 

@@ -15,6 +15,7 @@ const {manageStock ,
 
 const router = express.Router();
 
+router.post("/", manageStock); // transfer stock
 
 
 router.post("/",manageStock ); // transfer stock 
@@ -36,5 +37,10 @@ router.put("/markTransferAsRead", markTransferAsRead);      //mark as read trans
 // router.get("/:store_name",getstorebyname);
 // router.put("/:store_name",updatestorebyname);
 
+router.post("/requestproduct", requestProduct);            //sent product request
+router.get("/getProductRequests", getProductRequests);     //get product requests 4
+router.delete("/deleteRequest", deleteRequest);             //delete reqest
+router.get("/getallTransfers", getAllTransfers);            //get all transfer details
+router.put("/markTransferAsRead", markTransferAsRead);      //mark as read transfer request
 
 module.exports = router;

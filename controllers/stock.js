@@ -364,6 +364,7 @@ const getTransferDetails = async (req, res) => {
   }
 };
 
+
 // Function to handle product requests
 async function requestProduct(req, res) {
   const { products, store_id } = req.body;
@@ -635,16 +636,17 @@ const markTransferAsRead = async (req, res) => {
   }
 };
 
+
   module.exports = {
     manageStock,
     getStockByProductAndStore,
-
+    
     getStoresAndCategories,
     getBrandsByCategory,
     getProductsByCategoryAndBrand,
     transferStock,
     getTransferDetails,
-
+    
     requestProduct,
     getProductRequests,
     deleteRequest,
