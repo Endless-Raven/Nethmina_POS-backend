@@ -146,13 +146,61 @@ const getstorenames = async (req, res) => {
     }
 };
 
+// Update store details
+const updateStoreById = async (req, res) => {
+  const store_id = req.params.store_id; // Get the store_id from the path parameters
+  const { store_name, store_address, store_phone_number } = req.body; // Destructure the request body
+
+  const sql = `
+      UPDATE stores
+      SET store_name = ?, store_address = ?, store_phone_number = ?
+      WHERE store_id = ?;
+  `;
+
+  try {
+      const [result] = await db.query(sql, [store_name, store_address, store_phone_number, store_id]);
+
+      if (result.affectedRows === 0) {
+          return res.status(404).json({ message: "Store not found." });
+      }
+
+      return res.status(200).json({ message: "Store updated successfully." });
+  } catch (err) {
+      console.error("Error updating store:", err.message);
+      return res.status(500).json({ message: "Error inside server.", err });
+  }
+};
+
+
+// Delete a store
+const deleteStore = async (req, res) => {
+  const store_id = req.params.store_id; // Get the store_id from the path parameters
+
+  const sql = `DELETE FROM stores WHERE store_id = ?;`;
+
+  try {
+      const [result] = await db.query(sql, [store_id]);
+
+      if (result.affectedRows === 0) {
+          return res.status(404).json({ message: "Shop not found." });
+      }
+
+      return res.status(200).json({ message: "Remove shop successfully." });
+  } catch (err) {
+      console.error("Error deleting shop:", err.message);
+      return res.status(500).json({ message: "Error inside server.", err });
+  }
+};
+
+
 module.exports = {
     addStore,
     getStore,
     getstorebyname,
     updatestorebyname,
     getstorenames,
-    getstorenamebyid
-
+    getstorenamebyid,
+    updateStoreById,
+    deleteStore
   };
   
