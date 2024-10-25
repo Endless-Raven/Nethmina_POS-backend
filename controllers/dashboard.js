@@ -51,7 +51,7 @@ const getDashboardData = async (req, res) => {
       const [pendingTransfersData] = await db.query(`
         SELECT transfer_to, transfer_date AS date
         FROM transfer
-        WHERE transfer_date >= CURRENT_DATE();
+        WHERE transfer_approval = 'pending' AND transfer_date >= CURRENT_DATE();
       `);
 
       // Daily Profit
