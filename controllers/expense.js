@@ -58,6 +58,35 @@ const addExpense = async (req, res) => {
     }
 };
 
+// Add a new expense category and amount
+const addExpenseCategoryAndAmount = async (req, res) => {
+    const { expense_category, expense_amount } = req.body;
+
+    const sql = `INSERT INTO expense (expense_category, expense_amount) VALUES (?, ?)`;
+    const values = [expense_category, expense_amount];
+
+    try {
+        await db.query(sql, values);
+        return res.status(201).json({ message: "Expense category and amount added successfully." });
+    } catch (err) {
+        console.error("Error saving expense category and amount:", err.message);
+        return res.status(500).json({ message: "Error saving expense category and amount", err });
+    }
+};
+
+// Get expense categories and amounts
+const getExpenseCategoryAndAmount = async (req, res) => {
+    const sql = "SELECT expense_category, expense_amount FROM expense";
+
+    try {
+        const [rows] = await db.query(sql);
+        return res.json(rows);
+    } catch (err) {
+        console.error("Error fetching expense categories and amounts:", err.message);
+        return res.status(500).json({ message: "Error fetching expense categories and amounts", err });
+    }
+};
+
 // Update an existing expense
 const updateExpense = async (req, res) => {
     const expense_id = req.params.expense_id;
@@ -111,4 +140,6 @@ module.exports = {
     addExpense,
     updateExpense,
     deleteExpense,
+    addExpenseCategoryAndAmount,
+    getExpenseCategoryAndAmount
 };
