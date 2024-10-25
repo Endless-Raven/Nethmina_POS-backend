@@ -1,74 +1,80 @@
 const db = require("../config/db");
 
-const router = express.Router();
-
-router.get("/monthlyReport", async (req, res) => {
+// Fetch Monthly Report
+const getMonthlyReport = async (req, res) => {
     const { month, year } = req.query;
 
-    if (!month || !year) {
-        return res.status(400).json({ message: "Month and year are required" });
-    }
-
-    const startDate = `${year}-${month}-01`;
-    const endDate = `${year}-${month}-31`; // Simplified, assuming 31 days in the month
-
-    const sql = `
-        SELECT 
-            SUM(total_income) AS total_income, 
-            SUM(total_expense) AS total_expense,
-            store_id,
-            store_name,
-            DATE(created_at) AS date,
-            SUM(income_amount) AS income,
-            SUM(expense_amount) AS expense
-        FROM transactions
-        WHERE DATE(created_at) BETWEEN ? AND ?
-        GROUP BY store_id, DATE(created_at)
-    `;
-
     try {
-        const [rows] = await db.query(sql, [startDate, endDate]);
+        const sql = `
+            SELECT total_income, total_expense, 
+                   (total_income - total_expense) AS difference,
+                   total_income > total_expense AS is_profit,
+                   income, expense
+            FROM monthly_report
+            WHERE MONTH(start_date) = ? AND YEAR(start_date) = ?
+        `;
+        
+        const [report] = await db.query(sql, [month, year]);
 
-        if (!rows.length) {
-            return res.status(404).json({ message: "No records found for the specified month." });
+        // If no report is found, return the "Report not found" message
+        if (report.length === 0) {
+            return res.status(404).json({ message: "Report not found for the specified month and year." });
         }
 
-        // Group data by store and format the response
-        let totalIncome = 0, totalExpense = 0;
-        const report = {};
+        // Parsing income and expense details to add them into the response as objects
+        const formattedReport = {
+            ...report[0],
+            income: JSON.parse(report[0].income),
+            expense: JSON.parse(report[0].expense)
+        };
 
-        rows.forEach(row => {
-            totalIncome += row.income;
-            totalExpense += row.expense;
-
-            if (!report[row.store_name]) {
-                report[row.store_name] = {
-                    store: row.store_name,
-                    sales: []
-                };
-            }
-
-            report[row.store_name].sales.push({
-                date: row.date,
-                income: row.income,
-                expence: row.expense
-            });
-        });
-
-        const isProfit = totalIncome > totalExpense;
-        const difference = totalIncome - totalExpense;
-
-        return res.json({
-            total_income: totalIncome,
-            total_expence: totalExpense,
-            is_profit: isProfit,
-            difference,
-            report: Object.values(report)
-        });
+        return res.json(formattedReport);
     } catch (err) {
         console.error("Error fetching monthly report:", err.message);
         return res.status(500).json({ message: "Error fetching monthly report", err });
     }
-});
+};
 
-module.exports = router;
+// Fetch Daily Report
+const getDailyReport = async (req, res) => {
+    const { date } = req.query;
+
+    try {
+        const incomeSql = `
+            SELECT income_category AS category, income_amount AS amount, created_at AS time, true AS is_income
+            FROM income
+            WHERE DATE(created_at) = ?
+        `;
+        const expenseSql = `
+            SELECT expense_category AS category, expense_amount AS amount, created_at AS time, false AS is_income
+            FROM expense
+            WHERE DATE(created_at) = ?
+        `;
+
+        const [incomeResults] = await db.query(incomeSql, [date]);
+        const [expenseResults] = await db.query(expenseSql, [date]);
+
+        const report = incomeResults.concat(expenseResults).sort((a, b) => new Date(a.time) - new Date(b.time));
+
+        const totalIncome = incomeResults.reduce((sum, { amount }) => sum + amount, 0);
+        const totalExpense = expenseResults.reduce((sum, { amount }) => sum + amount, 0);
+        
+        const response = {
+            total_income: totalIncome,
+            total_expense: totalExpense,
+            is_profit: totalIncome > totalExpense,
+            difference: totalIncome - totalExpense,
+            report
+        };
+
+        res.json(response);
+    } catch (err) {
+        console.error("Error fetching daily report:", err.message);
+        res.status(500).json({ message: "Error fetching daily report", err });
+    }
+};
+
+module.exports = {
+    getMonthlyReport,
+    getDailyReport,
+};
