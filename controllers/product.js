@@ -1,4 +1,6 @@
 const db = require("../config/db");
+const cron = require('node-cron');
+const nodemailer = require('nodemailer');
 
 //add item
 const additem = async (req, res) => {
@@ -571,9 +573,133 @@ const updateStockAndIMEI = async (req, res) => {
   }
 };
 
+const getProductDetails = async (req, res) => {
+  const { imei_number } = req.query;
+  console.log(imei_number);
+
+  if (!imei_number) {
+    return res.status(400).json({ message: 'Please provide a valid imei_number' });
+  }
+
+  try {
+    // Step 1: Check if the product exists in the 'products' table (not yet sold)
+    const productQuery = `
+      SELECT 
+        p.product_id,
+        p.product_name,
+        p.product_price,
+        p.product_type,
+        p.brand_name,
+        s.store_name,
+        p.created_at AS date
+      FROM products p
+      INNER JOIN stock s ON p.product_id = s.product_id
+      WHERE FIND_IN_SET(?, p.imei_number) > 0;
+    `;
+
+    const [products] = await db.query(productQuery, [imei_number]);
+
+    if (products.length > 0) {
+      // Product is in stock, return the details with sold = false
+      return res.status(200).json({
+        ...products[0],
+        sold: false  // explicitly set sold to false
+      });
+    }
+
+    // Step 2: If not found in 'products', check if it exists in 'sales_items' (sold)
+    const soldQuery = `
+      SELECT 
+        p.product_id,
+        p.product_name,
+        p.product_price,
+        p.product_type,
+        p.brand_name,
+        si.created_at AS date
+      FROM products p
+      INNER JOIN sales_items si ON p.product_id = si.product_id
+      WHERE FIND_IN_SET(?, si.imei_number) > 0;
+    `;
+
+    const [soldProducts] = await db.query(soldQuery, [imei_number]);
+
+    if (soldProducts.length > 0) {
+      // Product has been sold, return the details with sold = true
+      return res.status(200).json({
+        ...soldProducts[0],
+        sold: true  // explicitly set sold to true
+      });
+    }
+
+    // Step 3: If not found in both tables, return a 404 response
+    return res.status(404).json({ message: 'Product not found' });
+
+  } catch (err) {
+    console.error('Error fetching product details:', err.message);
+    return res.status(500).json({ message: 'Error inside server while fetching product details', err });
+  }
+};
 
 
+// Set up nodemailer transporter
+const transporter = nodemailer.createTransport({
+  service: 'gmail', // Use your email service provider
+      host: "smtp.gmail.email",
+      port: 465,
+      secure: true, // true for port 465, false for other ports    
+      auth: {
+          user:  process.env.EMAIL,
+          pass: process.env.EMAIL_PASS , // Use environment variables for sensitive data
+      },
+});
 
+// Function to get low stock items and send email
+const sendLowStockEmail = async () => {
+  try {
+    // Query to get items with stock quantity <= 10
+    const lowStockQuery = `
+      SELECT 
+        s.store_name,
+        p.product_name,
+        s.stock_quantity
+      FROM stock s
+      INNER JOIN products p ON s.product_id = p.product_id
+      WHERE s.stock_quantity <= 10;
+    `;
+    
+    const [lowStockItems] = await db.query(lowStockQuery);
+
+    if (lowStockItems.length === 0) {
+      console.log('No low stock items found.');
+      return;
+    }
+
+    // Format the low stock items for the email
+    const lowStockList = lowStockItems.map(item => 
+      `Store: ${item.store_name}, Product: ${item.product_name}, Quantity: ${item.stock_quantity}`
+    ).join('\n');
+
+    // Email options
+    const mailOptions = {
+      from: process.env.EMAIL,
+      to: process.env.recipientEmail,
+      subject: 'Daily Low Stock Alert',
+      text: `The following items have low stock (10 or less):\n\n${lowStockList}`
+    };
+
+    // Send the email
+    await transporter.sendMail(mailOptions);
+    console.log('Low stock email sent successfully!');
+  } catch (error) {
+    console.error('Error sending low stock email:', error);
+  }
+};
+
+// Schedule the task to run daily at 9:00 AM
+cron.schedule('8 23 * * *', () => {
+  console.log('Checking low stock items and sending email...');
+  sendLowStockEmail();
+});
 
 
 module.exports = {
@@ -590,7 +716,8 @@ module.exports = {
     searchProductsByBrand,
     searchProductsByType,
     searchProductsByModel,
-    updateStockAndIMEI
+    updateStockAndIMEI,
+    getProductDetails
   };
   
 
