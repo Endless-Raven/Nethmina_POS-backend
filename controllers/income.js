@@ -31,6 +31,19 @@ const getIncomeById = async (req, res) => {
     }
 };
 
+const getIncomeCategoryAndAmount = async (req, res) => {
+    const sql = "SELECT income_category, income_amount FROM income";
+
+    try {
+        const [rows] = await db.query(sql);
+        return res.json(rows);
+    } catch (err) {
+        console.error("Error fetching income categories and amounts:", err.message);
+        return res.status(500).json({ message: "Error fetching income categories and amounts", err });
+    }
+};
+
+
 const addIncome = async (req, res) => {
     const { income_category, income_amount, income_type,approval_status, user_id, store_id } = req.body; // user_id and store_id should be sent in the request body
 
@@ -106,6 +119,7 @@ const deleteIncome = async (req, res) => {
 module.exports = {
     getIncomes,
     getIncomeById,
+    getIncomeCategoryAndAmount,
     addIncome,
     updateIncome,
     deleteIncome,
