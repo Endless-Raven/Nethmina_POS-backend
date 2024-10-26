@@ -457,22 +457,54 @@ const updateitem = async (req,res) =>{
 };
 
 //delete item
-const deleteitem = async (req,res) =>{
-    const sql = "DELETE FROM products WHERE product_name = ?;"; // Query using product_name
-  const product_name = req.params.product_name; // Use product_name from the request parameters
-  
+const deleteitem = async (req, res) => {
+  const product_name = req.params.product_name;
+
+  // SQL queries
+  const getProductIdQuery = "SELECT product_id FROM products WHERE product_name = ?;";
+  const deleteStockQuery = "DELETE FROM stock WHERE product_id = ?;";
+  const deleteProductQuery = "DELETE FROM products WHERE product_name = ?;";
+
+  const connection = await db.getConnection();
+  await connection.beginTransaction();
+
   try {
-    console.log("Deleting product:", product_name);
-    const [result] = await db.query(sql, [product_name]); // Pass product_name to the query
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Product not found" }); // No rows affected, meaning the product doesn't exist
+    console.log("Deleting product and its stock:", product_name);
+
+    // Get product_id for the given product name
+    const [productRows] = await connection.query(getProductIdQuery, [product_name]);
+    if (productRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Product not found" });
     }
-    return res.json({ message: "Product deleted successfully", result });
+
+    const product_id = productRows[0].product_id;
+
+    // Delete stock records associated with this product_id
+    const [stockResult] = await connection.query(deleteStockQuery, [product_id]);
+
+    // Delete the product itself from the products table
+    const [productResult] = await connection.query(deleteProductQuery, [product_name]);
+
+    // Commit transaction if both deletions succeed
+    await connection.commit();
+
+    return res.json({
+      message: "Product and associated stock deleted successfully",
+      deletedStockRecords: stockResult.affectedRows,
+      deletedProductRecords: productResult.affectedRows,
+    });
   } catch (err) {
-    console.error("Error deleting product:", err.message);
+    // Rollback transaction in case of error
+    await connection.rollback();
+    console.error("Error deleting product and stock:", err.message);
     return res.status(500).json({ message: "Error inside server", err });
+  } finally {
+    // Release the connection back to the pool
+    connection.release();
   }
 };
+
 
 
 const updateStockAndIMEI = async (req, res) => {
