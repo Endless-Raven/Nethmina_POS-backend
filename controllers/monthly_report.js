@@ -129,25 +129,40 @@ const getDailyReport = async (req, res) => {
         const [incomeResults] = await db.query(incomeSql, [date]);
         const [expenseResults] = await db.query(expenseSql, [date]);
 
-        const report = incomeResults.concat(expenseResults).sort((a, b) => new Date(`1970-01-01T${a.time}`) - new Date(`1970-01-01T${b.time}`));
+        // Combine and sort all results by time
+        const reportData = incomeResults.concat(expenseResults).sort((a, b) => 
+            new Date(`1970-01-01T${a.time}`) - new Date(`1970-01-01T${b.time}`)
+        );
 
+        // Group sales by store
+        const groupedReport = reportData.reduce((acc, item) => {
+            const storeEntry = acc.find(store => store.store === item.store_name);
+            const salesItem = {
+                time: item.time,
+                category: item.category,
+                is_income: item.is_income,
+                amount: parseInt(item.amount, 10)
+            };
+
+            if (storeEntry) {
+                storeEntry.sales.push(salesItem);
+            } else {
+                acc.push({ store: item.store_name, sales: [salesItem] });
+            }
+
+            return acc;
+        }, []);
+
+        // Calculate total income and expenses
         const totalIncome = incomeResults.reduce((sum, { amount }) => sum + parseFloat(amount), 0);
         const totalExpense = expenseResults.reduce((sum, { amount }) => sum + parseFloat(amount), 0);
 
         const formattedReport = {
-            total_income: totalIncome.toFixed(2),
-            total_expense: totalExpense.toFixed(2),
+            total_income: Math.round(totalIncome),
+            total_expense: Math.round(totalExpense),
             is_profit: totalIncome > totalExpense,
-            difference: (totalIncome - totalExpense).toFixed(2),
-            report: report.map(item => ({
-                store: item.store_name,
-                sales: [{
-                    time: item.time,
-                    category: item.category,
-                    is_income: item.is_income,
-                    amount: parseFloat(item.amount).toFixed(2)
-                }]
-            }))
+            difference: Math.round(totalIncome - totalExpense),
+            report: groupedReport
         };
 
         res.json(formattedReport);
