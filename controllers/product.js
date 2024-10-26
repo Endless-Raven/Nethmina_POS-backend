@@ -425,7 +425,7 @@ const updateitem = async (req,res) =>{
 
     const sql = `
       UPDATE products 
-      SET product_name=? , product_price=?  , warranty_period=? , imei_number =? , product_stock =? , product_type =? , brand_name =? , product_wholesale_price =?
+      SET product_name=? , product_price=?  , warranty_period=? , product_type =? , brand_name =? , product_wholesale_price =?
       WHERE product_name = ?
     `;
   
@@ -435,8 +435,8 @@ const updateitem = async (req,res) =>{
       req.body.product_name,
       req.body.product_price,
       req.body.warranty_period,
-      req.body.imei_number,
-      req.body.product_stock,
+      // req.body.imei_number,
+      // req.body.product_stock,
       req.body.product_type,
       req.body.brand_name,
       req.body.product_wholesale_price,
