@@ -6,7 +6,7 @@ const {
      getBrandsByCategory,
      getProductsByCategoryAndBrand,
      transferStock,
-    // getTransferDetails,
+    getTransferDetails,
      requestProduct,
      getProductRequests,
      deleteRequest,
@@ -25,7 +25,7 @@ router.get('/getProductsByCategoryAndBrand', getProductsByCategoryAndBrand);//ge
 router.post('/transferStock', transferStock);
 router.get('/getAllPendingRequests', getAllPendingRequests);//get All Pending Requests details
 router.get('/markRequestAsRead', markRequestAsRead);//get All Pending Requests details
-
+router.get('/getTransferDetails', getTransferDetails);//get All Pending Requests details
 
 
 router.post("/requestproduct", requestProduct);            //sent product request

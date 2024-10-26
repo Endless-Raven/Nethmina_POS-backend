@@ -716,6 +716,72 @@ const getAllPendingRequests = async (req, res) => {
   }
 };
 
+const getTransferDetails = async (req, res) => {
+  try {
+      // SQL query to retrieve transfer details with associated product data
+      const sql = `
+          SELECT 
+              t.transfer_id,
+              t.transfer_from AS 'from',
+              t.transfer_to AS 'to',
+              t.transfer_date AS 'date',
+              t.transfer_time AS 'time',
+              t.transfer_approval,
+              p.product_id,
+              p.product_name,
+              p.product_stock,
+              t.transfer_quantity,
+              t.imei_number
+          FROM 
+              transfer t
+          LEFT JOIN 
+              products p ON t.product_id = p.product_id
+          ORDER BY 
+              t.transfer_id, p.product_id;
+      `;
+
+      const [transfers] = await db.query(sql);
+
+      if (!transfers || transfers.length === 0) {
+          return res.status(404).json({ message: "No transfer records found." });
+      }
+
+      // Format transfer data
+      const formattedTransfers = transfers.reduce((acc, row) => {
+          let transfer = acc.find(t => t.transfer_id === row.transfer_id);
+
+          if (!transfer) {
+              transfer = {
+                  transfer_id: row.transfer_id,
+                  products: [],
+                  from: row.from,
+                  to: row.to,
+                  date: row.date,
+                  time: row.time,
+                  completed: row.transfer_approval === 'received'
+              };
+              acc.push(transfer);
+          }
+
+          // Add product details, including IMEI numbers if available
+          transfer.products.push({
+              product_id: row.product_id,
+              product_name: row.product_name,
+              stock_quantity: row.stock_quantity,
+              transfer_quantity: row.transfer_quantity,
+              imei_number: row.imei_number ? JSON.parse(row.imei_number) : []
+          });
+
+          return acc;
+      }, []);
+
+      return res.json(formattedTransfers);
+  } catch (err) {
+      console.error("Error fetching transfer details:", err.message);
+      return res.status(500).json({ message: "Error fetching transfer details", err });
+  }
+};
+
 const markRequestAsRead = async (req, res) => {
   const { request_id } = req.query;
 
@@ -758,7 +824,7 @@ const markRequestAsRead = async (req, res) => {
     transferStock,
     getAllPendingRequests,
     markRequestAsRead,
-    
+    getTransferDetails,
     requestProduct,
     getProductRequests,
     deleteRequest,
