@@ -17,38 +17,7 @@ const transferStock = async (req, res) => {
     for (let product of products) {
       const { product_id, transfer_quantity, imei_number = [] } = product;
 
-      // Check if the product exists in the target branch
-      const checkProductQuery = `
-        SELECT * FROM stock
-        WHERE product_id = ? AND store_name = ?;
-      `;
-      const [rows] = await connection.query(checkProductQuery, [product_id, target_branch]);
-
-      if (rows.length > 0) {
-        // Product exists in the target branch, update stock
-        const updateStockQuery = `
-          UPDATE stock
-          SET stock_quantity = stock_quantity + ?, updated_at = NOW()
-          ${imei_number.length ? ", imei_numbers = CONCAT(imei_numbers, ?, ',')" : ""}
-          WHERE product_id = ? AND store_name = ?;
-        `;
-        const updateParams = imei_number.length
-          ? [transfer_quantity, imei_number.join(','), product_id, target_branch]
-          : [transfer_quantity, product_id, target_branch];
-        await connection.query(updateStockQuery, updateParams);
-      } else {
-        // Product doesn't exist in the target branch, create a new row
-        const insertStockQuery = `
-          INSERT INTO stock (store_name, product_id, stock_quantity, created_at, updated_at${imei_number.length ? ", imei_numbers" : ""})
-          VALUES (?, ?, ?, NOW(), NOW()${imei_number.length ? ", ?" : ""});
-        `;
-        const insertParams = imei_number.length
-          ? [target_branch, product_id, transfer_quantity, imei_number.join(',')]
-          : [target_branch, product_id, transfer_quantity];
-        await connection.query(insertStockQuery, insertParams);
-      }
-
-      // Reduce the stock from the main branch
+      // Reduce the stock from the main branch only
       const reduceMainStockQuery = `
         UPDATE stock
         SET stock_quantity = stock_quantity - ?, updated_at = NOW()
@@ -66,7 +35,7 @@ const transferStock = async (req, res) => {
         return res.status(400).json({ message: "Insufficient stock in the main branch or product not found." });
       }
 
-      // Log the transfer details in the `transfer` table
+      // Log the transfer details in the `transfer` table without updating target branch stock
       const insertTransferQuery = `
         INSERT INTO transfer (
           transfer_from,
@@ -86,7 +55,7 @@ const transferStock = async (req, res) => {
     // Commit the transaction
     await connection.commit();
 
-    return res.status(200).json({ message: "transfer started" });
+    return res.status(200).json({ message: "Transfer recorded without updating target branch stock." });
   } catch (err) {
     // Rollback transaction on error
     await connection.rollback();
@@ -97,7 +66,6 @@ const transferStock = async (req, res) => {
     connection.release();
   }
 };
-
 
 
 
@@ -631,27 +599,80 @@ const markTransferAsRead = async (req, res) => {
       .json({ message: "Please provide a valid transfer_id" });
   }
 
+  const connection = await db.getConnection();
+  await connection.beginTransaction();
+
   try {
-    // Query to update the transfer status to "read" or equivalent
-    const updateQuery = `
+    // Update the transfer status to "received"
+    const updateTransferQuery = `
       UPDATE transfer 
       SET transfer_approval = 'received' 
       WHERE transfer_id = ?;
     `;
+    const [updateResult] = await connection.query(updateTransferQuery, [transfer_id]);
 
-    const [result] = await db.query(updateQuery, [transfer_id]);
-
-    if (result.affectedRows === 0) {
+    if (updateResult.affectedRows === 0) {
+      await connection.rollback();
       return res.status(404).json({ message: "Transfer not found." });
     }
 
-    return res.status(200).json({ message: "Transfer marked as read." });
+    // Fetch transfer details including target store and product information
+    const transferDetailsQuery = `
+      SELECT transfer_to, product_id, transfer_quantity, imei_number 
+      FROM transfer 
+      WHERE transfer_id = ?;
+    `;
+    const [transferDetails] = await connection.query(transferDetailsQuery, [transfer_id]);
+
+    if (transferDetails.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Transfer details not found." });
+    }
+
+    const { transfer_to: target_branch, product_id, transfer_quantity, imei_number } = transferDetails[0];
+
+    // Check if the product already exists in the target branch stock
+    const checkStockQuery = `
+      SELECT * FROM stock 
+      WHERE product_id = ? AND store_name = ?;
+    `;
+    const [stockRows] = await connection.query(checkStockQuery, [product_id, target_branch]);
+
+    if (stockRows.length > 0) {
+      // Product exists, update stock quantity and append IMEI numbers
+      const updateStockQuery = `
+        UPDATE stock
+        SET stock_quantity = stock_quantity + ?, 
+            imei_numbers = CONCAT(imei_numbers, ?, ','),
+            updated_at = NOW()
+        WHERE product_id = ? AND store_name = ?;
+      `;
+      const imeiString = imei_number ? imei_number + ',' : ''; // Format IMEI numbers with comma
+      await connection.query(updateStockQuery, [transfer_quantity, imeiString, product_id, target_branch]);
+    } else {
+      // Product does not exist, insert new stock record
+      const insertStockQuery = `
+        INSERT INTO stock (store_name, product_id, stock_quantity, imei_numbers, created_at, updated_at)
+        VALUES (?, ?, ?, ?, NOW(), NOW());
+      `;
+      await connection.query(insertStockQuery, [target_branch, product_id, transfer_quantity, imei_number]);
+    }
+
+    // Commit the transaction
+    await connection.commit();
+
+    return res.status(200).json({ message: "Transfer marked as received and stock updated for the target branch." });
   } catch (err) {
-    console.error("Error marking transfer as read:", err.message);
+    // Rollback transaction on error
+    await connection.rollback();
+    console.error("Error marking transfer as read and updating stock:", err.message);
     return res.status(500).json({
-      message: "Error inside server while marking transfer as read",
+      message: "Error inside server while marking transfer as read and updating stock",
       err,
     });
+  } finally {
+    // Release the connection back to the pool
+    connection.release();
   }
 };
 
