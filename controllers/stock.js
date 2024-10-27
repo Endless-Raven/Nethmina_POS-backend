@@ -784,13 +784,16 @@ const getTransferDetails = async (req, res) => {
               acc.push(transfer);
           }
 
-          // Add product details, including IMEI numbers if available
+          // Convert comma-separated IMEI numbers to an array
+          const imeiNumbers = row.imei_number ? row.imei_number.split(',') : [];
+
+          // Add product details
           transfer.products.push({
               product_id: row.product_id,
               product_name: row.product_name,
-              stock_quantity: row.stock_quantity,
+              stock_quantity: row.product_stock,
               transfer_quantity: row.transfer_quantity,
-              imei_number: row.imei_number ? JSON.parse(row.imei_number) : []
+              imei_number: imeiNumbers
           });
 
           return acc;
