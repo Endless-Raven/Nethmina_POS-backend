@@ -10,12 +10,11 @@ const additem = async (req, res) => {
   if (!req.body.product_name) {
     return res.status(400).json({ message: "Product name is required." });
   }
-  // Step 1: Check if the product already exists by product_name
-  const checkProductQuery = `SELECT imei_number, product_stock, product_id FROM products WHERE product_name = ?`;
+  
+  const checkProductQuery = `SELECT imei_number, product_stock, product_id, warranty_period FROM products WHERE product_name = ?`;
   const getStoreNameQuery = `SELECT s.store_name FROM users u JOIN stores s ON u.store_id = s.store_id WHERE u.user_id = ?`;
 
   try {
-    // Fetch store_name by user from req.body (assuming req.body.user contains the user_id)
     const [store] = await db.query(getStoreNameQuery, [req.body.user]);
 
     if (store.length === 0) {
@@ -23,24 +22,17 @@ const additem = async (req, res) => {
     }
 
     const storeName = store[0].store_name;
-
     const [product] = await db.query(checkProductQuery, [req.body.product_name]);
-
-    const newImeiNumbers = req.body.imei_numbers;  // Assuming imei_numbers is an array in req.body
+    const newImeiNumbers = req.body.imei_numbers; // Assuming imei_numbers is an array in req.body
 
     if (product.length > 0) {
-      // Step 2: Product exists, check IMEI numbers
       const existingImeiNumbers = product[0].imei_number ? product[0].imei_number.split(",") : [];
-
-      // Check if any of the IMEI numbers already exist in the product
       const duplicateImeiNumbers = newImeiNumbers.filter(imei => existingImeiNumbers.includes(imei));
 
       if (duplicateImeiNumbers.length > 0) {
         return res.status(400).json({ message: `The following IMEI numbers already exist: ${duplicateImeiNumbers.join(", ")}` });
       } else {
-        // Step 3: Append new IMEI numbers to the existing list and update the stock
         const updatedImeiNumbers = [...existingImeiNumbers, ...newImeiNumbers].join(",");
-
         const updateProductQuery = `
           UPDATE products
           SET imei_number = ?, product_stock = product_stock + ?
@@ -48,16 +40,13 @@ const additem = async (req, res) => {
         `;
         await db.query(updateProductQuery, [updatedImeiNumbers, req.body.product_stock, req.body.product_name]);
 
-        // Step 4: Update the stock table for this store
         const checkStockQuery = `SELECT * FROM stock WHERE product_id = ? AND store_name = ?`;
         const [existingStock] = await db.query(checkStockQuery, [product[0].product_id, storeName]);
 
         if (existingStock.length > 0) {
-          // Update the existing stock record
           const updatedImeiNumbersInStock = existingStock[0].imei_numbers
             ? existingStock[0].imei_numbers.split(",").concat(newImeiNumbers).join(",")
             : newImeiNumbers.join(",");
-
           const updateStockQuery = `
             UPDATE stock
             SET stock_quantity = stock_quantity + ?, imei_numbers = ?
@@ -70,7 +59,6 @@ const additem = async (req, res) => {
             storeName,
           ]);
         } else {
-          // Insert new stock record
           const insertStockQuery = `
             INSERT INTO stock (store_name, product_id, stock_quantity, imei_numbers)
             VALUES (?, ?, ?, ?)
@@ -89,39 +77,36 @@ const additem = async (req, res) => {
         });
       }
     } else {
-      // Step 5: Product doesn't exist, insert it as a new product
       const insertProductQuery = `
-        INSERT INTO products (product_name, product_price, warranty_period, imei_number, product_stock, product_type, product_model, brand_name ,product_wholesale_price)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?,?)
+        INSERT INTO products (product_name, product_price, warranty_period, imei_number, product_stock, product_type, product_model, brand_name, product_wholesale_price)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
-
       const productValues = [
         req.body.product_name,
         req.body.product_price,
         req.body.warranty_period,
-        newImeiNumbers.join(","), // Join array to string
+        newImeiNumbers.join(","), 
         req.body.product_stock,
         req.body.product_type,
         req.body.product_model,
         req.body.brand_name,
-        req.body.product_wholesale_price
+        req.body.product_wholesale_price,
       ];
-
       const [insertedProduct] = await db.query(insertProductQuery, productValues);
-      console.log("Inserted Product ID:", insertedProduct.insertId); // Ensure this is correct
-
-      // Step 6: Add entry to the stock table for the new product
+      
       const insertStockQuery = `
         INSERT INTO stock (store_name, product_id, stock_quantity, imei_numbers)
         VALUES (?, ?, ?, ?)
       `;
       await db.query(insertStockQuery, [
         storeName,
-        insertedProduct.insertId, // Product ID from the newly inserted product
+        insertedProduct.insertId,
         req.body.product_stock,
-        newImeiNumbers.join(","), // Join array to string
+        newImeiNumbers.join(","),
       ]);
-console.log("as",insertedProduct.insertId)
+      
+      console.log("Inserted Product ID:", insertedProduct.insertId);
+
       return res.status(200).json({
         message: "New product added successfully and stock updated for the store.",
       });
@@ -131,6 +116,7 @@ console.log("as",insertedProduct.insertId)
     return res.status(500).json({ message: "Error inside server.", err });
   }
 };
+
 
 
 // Get all distinct product types as an array
