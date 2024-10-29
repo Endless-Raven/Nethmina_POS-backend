@@ -549,7 +549,8 @@ const getAllTransfers = async (req, res) => {
         t.transfer_quantity
       FROM transfer t
       INNER JOIN products p ON t.product_id = p.product_id
-      WHERE t.transfer_to = ?;
+      WHERE t.transfer_to = ?
+       AND t.transfer_approval = 'sending';
     `;
 
     const [transfers] = await db.query(transferQuery, [storeName]);
