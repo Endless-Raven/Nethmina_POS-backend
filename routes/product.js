@@ -14,7 +14,9 @@ const { additem ,
       searchProductsByBrand,
       searchProductsByModel,
       updateStockAndIMEI,
-      getProductDetails
+      getProductDetails,
+      getitembycode,
+      getitembyname
     } = require("../controllers/product");
 
 
@@ -25,6 +27,9 @@ router.post("/",additem ); //add item
 router.get("/", getitems );//get items
 
 router.get("/:product_name",getitembyid );// get item by id
+router.get("/productCode/:product_code",getitembycode );// get item by code
+router.get("/productName/:product_name",getitembyname );// get item by name
+
 router.put("/:product_name",updateitem ); //update item details 
 router.delete("/:product_name",deleteitem); //delete item
 
