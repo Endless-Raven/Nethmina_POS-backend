@@ -140,7 +140,11 @@ console.log(customerPhoneNumber);
     `;
 
     for (const product of products) {
-      const { product_id, quantity, price, serial_number, discount, warranty_period } = product;
+      const { product_id, quantity, price, serial_number, discount } = product;
+
+      const [productDetails] = await db.query("SELECT warranty_period FROM products WHERE product_id = ?", [product_id]);
+      const warranty_period = productDetails[0]?.warranty_period; // Get warranty period
+
 
       // Check product type (e.g., mobile phones)
       const [productTypeResult] = await db.query("SELECT product_type FROM products WHERE product_id = ?", [product_id]);
