@@ -79,7 +79,7 @@ const additem = async (req, res) => {
     } else {
       const insertProductQuery = `
         INSERT INTO products (product_name, product_code, product_price, warranty_period, imei_number, product_stock, product_type, product_model, brand_name, product_wholesale_price)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       const productValues = [
         req.body.product_name,
