@@ -78,11 +78,12 @@ const additem = async (req, res) => {
       }
     } else {
       const insertProductQuery = `
-        INSERT INTO products (product_name, product_price, warranty_period, imei_number, product_stock, product_type, product_model, brand_name, product_wholesale_price)
+        INSERT INTO products (product_name, product_code, product_price, warranty_period, imei_number, product_stock, product_type, product_model, brand_name, product_wholesale_price)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       const productValues = [
         req.body.product_name,
+        req.body.product_code,
         req.body.product_price,
         req.body.warranty_period,
         newImeiNumbers.join(","), 
@@ -405,6 +406,61 @@ const getitembyid = async (req,res) =>{
 }
 
 
+const getitembyname = async (req, res) => {
+  const product_name = req.params.product_name;
+
+  const sql = `
+  SELECT product_id, product_name
+        FROM products
+        WHERE product_name LIKE ?`;
+
+  try {
+      console.log("Fetching product by name:", product_name);
+
+      const [rows] = await db.query(sql, `%${product_name}%`); // Pass the product name as a parameter to the query
+
+      if (rows.length === 0) {
+          return res.status(404).json({ message: "Product not found." }); // Handle case where no product is found
+      }
+      
+      console.log(rows);
+      return res.json(rows); // Return the found product
+  } catch (err) {
+      console.error("Error fetching product:", err.message);
+      return res.status(500).json({ message: "Error inside server", err });
+  }
+};
+
+
+
+//get item by code
+const getitembycode = async (req,res) =>{
+  const product_code = req.params.product_code; 
+
+  const sql = `
+      SELECT *
+      FROM products
+      WHERE product_code = ?`;
+  
+      try {
+          console.log("Fetching product by ID:", product_code);
+          
+          const [rows] = await db.query(sql, [product_code]); // Pass the product ID as a parameter to the query
+      
+          if (rows.length === 0) {
+            return res.status(404).json({ message: "Product not found." }); // Handle case where no product is found
+          }
+      console.log(rows);
+          return res.json(rows[0]); // Return the found product
+        } catch (err) {
+          console.error("Error fetching product:", err.message);
+          return res.status(500).json({ message: "Error inside server", err });
+        }
+
+}
+
+
+
 //update item
 const updateitem = async (req,res) =>{
     console.log("Request body:", req.body); // Log the request body
@@ -720,6 +776,8 @@ cron.schedule('8 23 * * *', () => {
 });
 
 
+
+
 module.exports = {
     additem,
     getitembyid,
@@ -735,7 +793,9 @@ module.exports = {
     searchProductsByType,
     searchProductsByModel,
     updateStockAndIMEI,
-    getProductDetails
+    getProductDetails,
+    getitembycode,
+    getitembyname
   };
   
 
