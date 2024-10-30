@@ -78,8 +78,8 @@ const additem = async (req, res) => {
       }
     } else {
       const insertProductQuery = `
-        INSERT INTO products (product_name, product_code, product_price, warranty_period, imei_number, product_stock, product_type, product_model, brand_name, product_wholesale_price)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO products (product_name, product_code, product_price, warranty_period, imei_number, product_stock, product_type, product_model, brand_name, product_wholesale_price, max_discount)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       const productValues = [
         req.body.product_name,
@@ -92,6 +92,7 @@ const additem = async (req, res) => {
         req.body.product_model,
         req.body.brand_name,
         req.body.product_wholesale_price,
+        req.body.max_discount
       ];
       const [insertedProduct] = await db.query(insertProductQuery, productValues);
       
@@ -478,7 +479,7 @@ const updateitem = async (req,res) =>{
 
     const sql = `
       UPDATE products 
-      SET product_name=? , product_price=?  , warranty_period=? , product_type =? , brand_name =? , product_wholesale_price =?
+      SET product_name=? , product_price=?  , warranty_period=? , product_type =? , brand_name =? , product_wholesale_price =? ,max_discount=?
       WHERE product_name = ?
     `;
   
@@ -493,7 +494,8 @@ const updateitem = async (req,res) =>{
       req.body.product_type,
       req.body.brand_name,
       req.body.product_wholesale_price,
-      product_name,
+      req.body.max_discount,
+      product_name
 
     ];
   
