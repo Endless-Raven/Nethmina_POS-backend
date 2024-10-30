@@ -138,22 +138,20 @@ const getstorenames = async (req, res) => {
 
 // Update store details
 const updateStoreById = async (req, res) => {
-  const { store_name, store_address, store_phone_number,store_id } = req.body; // Destructure the request body
-
+  const { store_address, store_phone_number,store_id } = req.body; // Destructure the request body
   const sql = `
       UPDATE stores
-      SET store_name = ?, store_address = ?, store_phone_number = ?
+      SET  store_address = ?, store_phone_number = ?
       WHERE store_id = ?;
   `;
 
   try {
     const [result] = await db.query(sql, [
-      store_name,
       store_address,
       store_phone_number,
       store_id,
     ]);
-
+console.log(result)
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: "Store not found." });
     }

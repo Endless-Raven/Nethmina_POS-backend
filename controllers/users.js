@@ -163,23 +163,32 @@ const addUser = async (req, res) => {
 
 
 //update a users
+// Route to update an employee's information
 const updateUser = async (req, res) => {
   const { user_id, username, role, phone, store_id } = req.body;
 
+  // Ensure required fields are present
+  if (!user_id || !username || !role || !phone || !store_id) {
+    return res.status(400).json({ message: "All fields are required to update an employee." });
+  }
+
+  // SQL query to update employee details in users table
   const updateEmployeeQuery = `
-      UPDATE users
-      SET username = ?, role = ?, user_phone_number = ?, store_id = ?
-      WHERE user_id = ?
-    `;
+    UPDATE users
+    SET username = ?, role = ?, user_phone_number = ?, store_id = ?
+    WHERE user_id = ?
+  `;
 
   try {
-    await db.query(updateEmployeeQuery, [
-      username,
-      role,
-      phone,
-      store_id,
-      user_id,
-    ]);
+    // Execute the query with the provided values
+    const [result] = await db.query(updateEmployeeQuery, [username, role, phone, store_id, user_id]);
+
+    // Check if any rows were affected (i.e., if the update was successful)
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Employee not found." });
+    }
+
+    // Send success response
     res.json({ message: "Employee updated successfully" });
   } catch (err) {
     console.error("Error updating employee:", err.message);
