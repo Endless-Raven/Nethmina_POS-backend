@@ -138,8 +138,7 @@ const getstorenames = async (req, res) => {
 
 // Update store details
 const updateStoreById = async (req, res) => {
-  const store_id = req.params.store_id; // Get the store_id from the path parameters
-  const { store_name, store_address, store_phone_number } = req.body; // Destructure the request body
+  const { store_name, store_address, store_phone_number,store_id } = req.body; // Destructure the request body
 
   const sql = `
       UPDATE stores
