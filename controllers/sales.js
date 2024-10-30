@@ -179,8 +179,9 @@ console.log(customerPhoneNumber);
           throw new Error(`Failed to update stock for product ${product_id} in store ${store_name}.`);
         }
       } else {
+       const productprice=(price-discount);
         // Handle non-mobile products
-        await db.query(salesItemQuery, [sales_id, product_id, quantity, price, serial_number, discount, warranty_period]);
+        await db.query(salesItemQuery, [sales_id, product_id, quantity, productprice, serial_number, discount, warranty_period]);
 
         const [productStockUpdated] = await db.query(updateProductStockAndImeiQuery, [quantity, null, product_id, quantity]);
 

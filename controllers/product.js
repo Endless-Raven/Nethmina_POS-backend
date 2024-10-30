@@ -438,9 +438,20 @@ const getitembycode = async (req,res) =>{
   const product_code = req.params.product_code; 
 
   const sql = `
-      SELECT *
-      FROM products
-      WHERE product_code = ?`;
+       SELECT 
+      product_id, 
+      product_name, 
+      product_code, 
+      product_price, 
+      warranty_period, 
+      product_stock, 
+      product_type, 
+      brand_name, 
+      product_model
+    FROM 
+      products
+    WHERE 
+      product_code = ?;`;
   
       try {
           console.log("Fetching product by ID:", product_code);
