@@ -59,7 +59,7 @@ const getStoreNameByUser = async (user_id) => {
 const makesale = async (req, res) => {
   try {
     const { cashier_id, sales_person, total_amount, products, user, customer_details } = req.body;
-
+    let productprice;
     // Step 1: Validate customer details (check phone number)
     const customerPhoneNumber = customer_details.customer_phone_number;
 console.log(customerPhoneNumber);
@@ -141,7 +141,7 @@ console.log(customerPhoneNumber);
 
     for (const product of products) {
       const { product_id, quantity, price, serial_number, discount } = product;
-
+      
       const [productDetails] = await db.query("SELECT warranty_period FROM products WHERE product_id = ?", [product_id]);
       const warranty_period = productDetails[0]?.warranty_period; // Get warranty period
 
@@ -179,7 +179,8 @@ console.log(customerPhoneNumber);
           throw new Error(`Failed to update stock for product ${product_id} in store ${store_name}.`);
         }
       } else {
-       const productprice=(price-discount);
+
+       productprice=(price-discount);
         // Handle non-mobile products
         await db.query(salesItemQuery, [sales_id, product_id, quantity, productprice, serial_number, discount, warranty_period]);
 
