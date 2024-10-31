@@ -594,7 +594,7 @@ const updateStockAndIMEI = async (req, res) => {
   `;
 
   const { product_name } = req.params; // Extract product_name from the request URL
-  const { product_stock, imei_number, user } = req.body; // Extract new stock and IMEI numbers
+  const { product_stock, imei_number, user, category } = req.body; // Extract new stock and IMEI numbers
   const getStoreNameQuery = `SELECT s.store_name FROM users u JOIN stores s ON u.store_id = s.store_id WHERE u.user_id = ?`;
 
   try {
@@ -615,9 +615,19 @@ const updateStockAndIMEI = async (req, res) => {
     let currentIMEINumbers = product[0].imei_number ? product[0].imei_number.split(",") : [];
     const productId = product[0].product_id;
 
-    // Step 3: Merge new IMEI numbers with existing ones
-    const newIMEINumbers = Array.isArray(imei_number) ? imei_number : [imei_number];
-    const updatedIMEINumbers = [...currentIMEINumbers, ...newIMEINumbers].join(",");
+    // Step 3: Update IMEI numbers conditionally based on category
+    let newIMEINumbers = []; // Declare outside for scope access
+    if (category === 'Mobile Phone') {
+      // Ensure imei_number is present and valid when category is 'Mobile Phone'
+      if (!imei_number || !Array.isArray(imei_number) || imei_number.length === 0 || imei_number.includes(null)) {
+        return res.status(400).json({ message: "IMEI number is required for Mobile Phone category." });
+      }
+      newIMEINumbers = imei_number.filter(imei => imei); // Filter out null or invalid values
+      updatedIMEINumbers = [...currentIMEINumbers, ...newIMEINumbers].join(",");
+    } else {
+      // If the category is not 'Mobile Phone', do not include IMEI numbers
+      updatedIMEINumbers = currentIMEINumbers.join(","); // Keep existing IMEI numbers
+    }
 
     // Step 4: Update stock in products table by adding new quantity
     const updatedStock = currentStock + Number(product_stock);
@@ -632,7 +642,9 @@ const updateStockAndIMEI = async (req, res) => {
 
       // Merge IMEI numbers and update stock quantity
       const updatedStockQuantityInStore = currentStockQuantity + Number(product_stock);
-      const updatedIMEINumbersInStore = [...existingIMEINumbersInStock, ...newIMEINumbers].join(",");
+      const updatedIMEINumbersInStore = category === 'Mobile Phone'
+        ? [...existingIMEINumbersInStock, ...newIMEINumbers].join(",") 
+        : existingIMEINumbersInStock.join(",");
 
       await db.query(sqlUpdateStock, [
         updatedStockQuantityInStore,
@@ -650,7 +662,7 @@ const updateStockAndIMEI = async (req, res) => {
         storeName,
         productId,
         product_stock,
-        newIMEINumbers.join(","),
+        category === 'Mobile Phone' ? newIMEINumbers.join(",") : "",
       ]);
     }
 
@@ -661,6 +673,8 @@ const updateStockAndIMEI = async (req, res) => {
     return res.status(500).json({ message: "Error inside server.", err });
   }
 };
+
+
 
 const getProductDetails = async (req, res) => {
   const { imei_number } = req.query;
