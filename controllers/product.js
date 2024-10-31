@@ -191,8 +191,56 @@ const getFilteredProductDetails = async (req, res) => {
   }
 };
 
+// Get all products by brand name and product type
+const getProductforMangerinventory = async (req, res) => {
+  const { brand_name, product_type, store_id } = req.query; // Get brand_name, product_type, and store_id from request query parameters
 
+  const productQuery = `
+    SELECT 
+      products.*,
+      GROUP_CONCAT(sales_items.imei_number) AS imei_numbers
+    FROM products
+    LEFT JOIN sales_items ON products.product_id = sales_items.product_id
+    WHERE products.brand_name = ? AND products.product_type = ?
+    GROUP BY products.product_id;`;
 
+  try {
+    console.log(`Fetching products for brand: ${brand_name} and product type: ${product_type}...`);
+
+    // Query products and IMEI numbers
+    const [productRows] = await db.query(productQuery, [brand_name, product_type]);
+
+    // Query to get the store name
+    const storeQuery = `SELECT store_name FROM stores WHERE store_id = ?;`;
+    const [storeRows] = await db.query(storeQuery, [store_id]);
+    const storeName = storeRows.length > 0 ? storeRows[0].store_name : null;
+
+    // Process each product row and get stock quantity
+    const processedRows = await Promise.all(
+      productRows.map(async (row) => {
+        const imeiArray = row.imei_numbers ? row.imei_numbers.split(',') : [];
+        
+        // Get stock quantity for the current product
+        const stockQuery = `SELECT stock_quantity FROM stock WHERE product_id = ? AND store_name = ?;`;
+        const [stockRows] = await db.query(stockQuery, [row.product_id, storeName]);
+        const stockQuantity = stockRows.length > 0 ? stockRows[0].stock_quantity : 0;
+
+        // Return product data with IMEI numbers as an array and stock quantity
+        return {
+          ...row,
+          imei_numbers: imeiArray,
+          stock_quantity: stockQuantity,
+        };
+      })
+    );
+
+    // Return all processed product details with IMEI numbers as arrays and stock quantities
+    return res.json(processedRows);
+  } catch (err) {
+    console.error("Error fetching products:", err.message);
+    return res.status(500).json({ message: "Error inside server", err });
+  }
+};
 
 
 // Get all products by brand name and product type
@@ -839,7 +887,8 @@ module.exports = {
     updateStockAndIMEI,
     getProductDetails,
     getitembycode,
-    getitembyname
+    getitembyname,
+    getProductforMangerinventory
   };
   
 
