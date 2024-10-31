@@ -448,6 +448,7 @@ const getitembycode = async (req,res) =>{
       product_stock, 
       product_type, 
       brand_name, 
+      imei_number,
       product_model,
       max_discount
     FROM 
