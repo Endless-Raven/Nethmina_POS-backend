@@ -191,8 +191,56 @@ const getFilteredProductDetails = async (req, res) => {
   }
 };
 
+// Get all products by brand name and product type
+const getProductforMangerinventory = async (req, res) => {
+  const { brand_name, product_type, store_id } = req.query; // Get brand_name, product_type, and store_id from request query parameters
 
+  const productQuery = `
+    SELECT 
+      products.*,
+      GROUP_CONCAT(sales_items.imei_number) AS imei_numbers
+    FROM products
+    LEFT JOIN sales_items ON products.product_id = sales_items.product_id
+    WHERE products.brand_name = ? AND products.product_type = ?
+    GROUP BY products.product_id;`;
 
+  try {
+    console.log(`Fetching products for brand: ${brand_name} and product type: ${product_type}...`);
+
+    // Query products and IMEI numbers
+    const [productRows] = await db.query(productQuery, [brand_name, product_type]);
+
+    // Query to get the store name
+    const storeQuery = `SELECT store_name FROM stores WHERE store_id = ?;`;
+    const [storeRows] = await db.query(storeQuery, [store_id]);
+    const storeName = storeRows.length > 0 ? storeRows[0].store_name : null;
+
+    // Process each product row and get stock quantity
+    const processedRows = await Promise.all(
+      productRows.map(async (row) => {
+        const imeiArray = row.imei_numbers ? row.imei_numbers.split(',') : [];
+        
+        // Get stock quantity for the current product
+        const stockQuery = `SELECT stock_quantity FROM stock WHERE product_id = ? AND store_name = ?;`;
+        const [stockRows] = await db.query(stockQuery, [row.product_id, storeName]);
+        const stockQuantity = stockRows.length > 0 ? stockRows[0].stock_quantity : 0;
+
+        // Return product data with IMEI numbers as an array and stock quantity
+        return {
+          ...row,
+          imei_numbers: imeiArray,
+          stock_quantity: stockQuantity,
+        };
+      })
+    );
+
+    // Return all processed product details with IMEI numbers as arrays and stock quantities
+    return res.json(processedRows);
+  } catch (err) {
+    console.error("Error fetching products:", err.message);
+    return res.status(500).json({ message: "Error inside server", err });
+  }
+};
 
 
 // Get all products by brand name and product type
@@ -594,7 +642,7 @@ const updateStockAndIMEI = async (req, res) => {
   `;
 
   const { product_name } = req.params; // Extract product_name from the request URL
-  const { product_stock, imei_number, user } = req.body; // Extract new stock and IMEI numbers
+  const { product_stock, imei_number, user, category } = req.body; // Extract new stock and IMEI numbers
   const getStoreNameQuery = `SELECT s.store_name FROM users u JOIN stores s ON u.store_id = s.store_id WHERE u.user_id = ?`;
 
   try {
@@ -615,9 +663,19 @@ const updateStockAndIMEI = async (req, res) => {
     let currentIMEINumbers = product[0].imei_number ? product[0].imei_number.split(",") : [];
     const productId = product[0].product_id;
 
-    // Step 3: Merge new IMEI numbers with existing ones
-    const newIMEINumbers = Array.isArray(imei_number) ? imei_number : [imei_number];
-    const updatedIMEINumbers = [...currentIMEINumbers, ...newIMEINumbers].join(",");
+    // Step 3: Update IMEI numbers conditionally based on category
+    let newIMEINumbers = []; // Declare outside for scope access
+    if (category === 'Mobile Phone') {
+      // Ensure imei_number is present and valid when category is 'Mobile Phone'
+      if (!imei_number || !Array.isArray(imei_number) || imei_number.length === 0 || imei_number.includes(null)) {
+        return res.status(400).json({ message: "IMEI number is required for Mobile Phone category." });
+      }
+      newIMEINumbers = imei_number.filter(imei => imei); // Filter out null or invalid values
+      updatedIMEINumbers = [...currentIMEINumbers, ...newIMEINumbers].join(",");
+    } else {
+      // If the category is not 'Mobile Phone', do not include IMEI numbers
+      updatedIMEINumbers = currentIMEINumbers.join(","); // Keep existing IMEI numbers
+    }
 
     // Step 4: Update stock in products table by adding new quantity
     const updatedStock = currentStock + Number(product_stock);
@@ -632,7 +690,9 @@ const updateStockAndIMEI = async (req, res) => {
 
       // Merge IMEI numbers and update stock quantity
       const updatedStockQuantityInStore = currentStockQuantity + Number(product_stock);
-      const updatedIMEINumbersInStore = [...existingIMEINumbersInStock, ...newIMEINumbers].join(",");
+      const updatedIMEINumbersInStore = category === 'Mobile Phone'
+        ? [...existingIMEINumbersInStock, ...newIMEINumbers].join(",") 
+        : existingIMEINumbersInStock.join(",");
 
       await db.query(sqlUpdateStock, [
         updatedStockQuantityInStore,
@@ -650,7 +710,7 @@ const updateStockAndIMEI = async (req, res) => {
         storeName,
         productId,
         product_stock,
-        newIMEINumbers.join(","),
+        category === 'Mobile Phone' ? newIMEINumbers.join(",") : "",
       ]);
     }
 
@@ -661,6 +721,8 @@ const updateStockAndIMEI = async (req, res) => {
     return res.status(500).json({ message: "Error inside server.", err });
   }
 };
+
+
 
 const getProductDetails = async (req, res) => {
   const { imei_number } = req.query;
@@ -825,7 +887,8 @@ module.exports = {
     updateStockAndIMEI,
     getProductDetails,
     getitembycode,
-    getitembyname
+    getitembyname,
+    getProductforMangerinventory
   };
   
 

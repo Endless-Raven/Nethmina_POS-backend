@@ -17,20 +17,15 @@ const transferStock = async (req, res) => {
     for (let product of products) {
       const product_id = parseInt(product.product_id, 10);
       const transfer_quantity = parseInt(product.transfer_quantity, 10);
-      const imei_number = product.imei_number.filter(num => num.trim() !== ""); // Remove empty IMEIs
-
+      
       // Validate cleaned data
       if (!product_id || !transfer_quantity) {
         await connection.rollback();
         return res.status(400).json({ message: "Product ID or transfer quantity is invalid." });
       }
-      if (imei_number.length !== transfer_quantity) {
-        await connection.rollback();
-        return res.status(400).json({ message: "Provided IMEI numbers count does not match the transfer quantity." });
-      }
 
-      // Check product existence
-      const productQuery = `SELECT imei_number FROM products WHERE product_id = ?;`;
+      // Check product existence and type
+      const productQuery = `SELECT product_type, imei_number FROM products WHERE product_id = ?;`;
       const [productRows] = await connection.query(productQuery, [product_id]);
 
       if (!productRows.length) {
@@ -38,33 +33,57 @@ const transferStock = async (req, res) => {
         return res.status(400).json({ message: "Product not found." });
       }
 
-      // Check IMEI availability
-      if (imei_number.length) {
+      const { product_type, imei_number } = productRows[0];
+
+      // If the product is a mobile phone, check IMEI availability
+      if (product_type === 'Mobile Phone') {
+        const imei_number_list = product.imei_number.filter(num => num.trim() !== ""); // Remove empty IMEIs
+        
+        if (imei_number_list.length !== transfer_quantity) {
+          await connection.rollback();
+          return res.status(400).json({ message: "Provided IMEI numbers count does not match the transfer quantity." });
+        }
+
+        // Check IMEI availability
         const checkImeiQuery = `
           SELECT imei_numbers FROM stock
           WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
         `;
         const [imeiRows] = await connection.query(checkImeiQuery, [product_id, main_branch, transfer_quantity]);
 
-        if (!imeiRows.length || !imei_number.every(num => imeiRows[0].imei_numbers.split(',').includes(num))) {
+        if (!imeiRows.length || !imei_number_list.every(num => imeiRows[0].imei_numbers.split(',').includes(num))) {
           await connection.rollback();
           return res.status(400).json({ message: "IMEI numbers not available in the main branch stock." });
         }
-      }
+        
+        // Update stock and remove IMEIs for mobile phones
+        const reduceMainStockQuery = `
+          UPDATE stock
+          SET stock_quantity = stock_quantity - ?, updated_at = NOW(),
+              imei_numbers = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', imei_numbers, ','), CONCAT(',', ?, ','), ','))
+          WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
+        `;
+        const reduceParams = [transfer_quantity, imei_number_list.join(','), product_id, main_branch, transfer_quantity];
+        const [mainStockUpdated] = await connection.query(reduceMainStockQuery, reduceParams);
 
-      // Update stock and remove IMEIs
-      const reduceMainStockQuery = `
-        UPDATE stock
-        SET stock_quantity = stock_quantity - ?, updated_at = NOW(),
-            imei_numbers = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', imei_numbers, ','), CONCAT(',', ?, ','), ','))
-        WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
-      `;
-      const reduceParams = [transfer_quantity, imei_number.join(','), product_id, main_branch, transfer_quantity];
-      const [mainStockUpdated] = await connection.query(reduceMainStockQuery, reduceParams);
+        if (mainStockUpdated.affectedRows === 0) {
+          await connection.rollback();
+          return res.status(400).json({ message: "Insufficient stock in the main branch or product not found." });
+        }
+      } else {
+        // Update stock for non-mobile phone products
+        const reduceMainStockQuery = `
+          UPDATE stock
+          SET stock_quantity = stock_quantity - ?, updated_at = NOW()
+          WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
+        `;
+        const reduceParams = [transfer_quantity, product_id, main_branch, transfer_quantity];
+        const [mainStockUpdated] = await connection.query(reduceMainStockQuery, reduceParams);
 
-      if (mainStockUpdated.affectedRows === 0) {
-        await connection.rollback();
-        return res.status(400).json({ message: "Insufficient stock in the main branch or product not found." });
+        if (mainStockUpdated.affectedRows === 0) {
+          await connection.rollback();
+          return res.status(400).json({ message: "Insufficient stock in the main branch or product not found." });
+        }
       }
 
       // Log transfer
@@ -78,7 +97,7 @@ const transferStock = async (req, res) => {
           transfer_quantity
         ) VALUES (?, ?, ?, ?, ?, ?);
       `;
-      const transferParams = [main_branch, target_branch, "sending", product_id, imei_number.join(','), transfer_quantity];
+      const transferParams = [main_branch, target_branch, "sending", product_id, product_type === 'Mobile Phone' ? product.imei_number.join(',') : null, transfer_quantity];
       await connection.query(insertTransferQuery, transferParams);
     }
 
