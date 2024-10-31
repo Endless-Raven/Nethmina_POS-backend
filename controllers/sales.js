@@ -629,7 +629,7 @@ const sendEmailWithReport = (pdfBuffer, reportDate) => {
 };
 
 // Schedule the job to run every day at 11 PM
-cron.schedule("11 10 * * *", async () => {
+cron.schedule("00 23 * * *", async () => {
   // Runs every day at 11 PM
   const date = new Date().toISOString().split("T")[0]; // Get today's date in 'YYYY-MM-DD' format
   const email = process.env.EMAIL; // Replace with the actual email you want to send to

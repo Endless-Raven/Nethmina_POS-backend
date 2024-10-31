@@ -7,7 +7,11 @@ const transferStock = async (req, res) => {
   const { products, from: main_branch, to: target_branch } = req.body;
 
   if (!products || !main_branch || !target_branch) {
-    return res.status(400).json({ message: "Invalid request body. Please include products, from, and to." });
+    return res
+      .status(400)
+      .json({
+        message: "Invalid request body. Please include products, from, and to.",
+      });
   }
 
   const connection = await db.getConnection();
@@ -17,11 +21,13 @@ const transferStock = async (req, res) => {
     for (let product of products) {
       const product_id = parseInt(product.product_id, 10);
       const transfer_quantity = parseInt(product.transfer_quantity, 10);
-      
+
       // Validate cleaned data
       if (!product_id || !transfer_quantity) {
         await connection.rollback();
-        return res.status(400).json({ message: "Product ID or transfer quantity is invalid." });
+        return res
+          .status(400)
+          .json({ message: "Product ID or transfer quantity is invalid." });
       }
 
       // Check product existence and type
@@ -32,62 +38,185 @@ const transferStock = async (req, res) => {
         await connection.rollback();
         return res.status(400).json({ message: "Product not found." });
       }
-
       const { product_type, imei_number } = productRows[0];
 
-      // If the product is a mobile phone, check IMEI availability
-      if (product_type === 'Mobile Phone') {
-        const imei_number_list = product.imei_number.filter(num => num.trim() !== ""); // Remove empty IMEIs
-        
+      // Handle other branches (e.g., for mobile phones and non-mobile products) as previously coded
+      // Check IMEI availability and reduce stock in the main branch, log transfer, etc.
+
+      // Existing logic for IMEI checks and quantity reductions for regular stock transfer
+      if (product_type === "Mobile Phone") {
+        const imei_number_list = product.imei_number.filter(
+          (num) => num.trim() !== ""
+        );
         if (imei_number_list.length !== transfer_quantity) {
           await connection.rollback();
-          return res.status(400).json({ message: "Provided IMEI numbers count does not match the transfer quantity." });
+          return res
+            .status(400)
+            .json({
+              message:
+                "Provided IMEI numbers count does not match the transfer quantity.",
+            });
         }
 
-        // Check IMEI availability
+        // Check and update stock in the main branch
         const checkImeiQuery = `
-          SELECT imei_numbers FROM stock
-          WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
-        `;
-        const [imeiRows] = await connection.query(checkImeiQuery, [product_id, main_branch, transfer_quantity]);
+            SELECT imei_numbers FROM stock
+            WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
+          `;
+        const [imeiRows] = await connection.query(checkImeiQuery, [
+          product_id,
+          main_branch,
+          transfer_quantity,
+        ]);
 
-        if (!imeiRows.length || !imei_number_list.every(num => imeiRows[0].imei_numbers.split(',').includes(num))) {
+        if (
+          !imeiRows.length ||
+          !imei_number_list.every((num) =>
+            imeiRows[0].imei_numbers.split(",").includes(num)
+          )
+        ) {
           await connection.rollback();
-          return res.status(400).json({ message: "IMEI numbers not available in the main branch stock." });
+          return res
+            .status(400)
+            .json({
+              message: "IMEI numbers not available in the main branch stock.",
+            });
         }
-        
-        // Update stock and remove IMEIs for mobile phones
+
+        // Reduce stock for mobile phones in the main branch
         const reduceMainStockQuery = `
-          UPDATE stock
-          SET stock_quantity = stock_quantity - ?, updated_at = NOW(),
-              imei_numbers = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', imei_numbers, ','), CONCAT(',', ?, ','), ','))
-          WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
-        `;
-        const reduceParams = [transfer_quantity, imei_number_list.join(','), product_id, main_branch, transfer_quantity];
-        const [mainStockUpdated] = await connection.query(reduceMainStockQuery, reduceParams);
+            UPDATE stock
+            SET stock_quantity = stock_quantity - ?, updated_at = NOW(),
+                imei_numbers = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', imei_numbers, ','), CONCAT(',', ?, ','), ','))
+            WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
+          `;
+        const reduceParams = [
+          transfer_quantity,
+          imei_number_list.join(","),
+          product_id,
+          main_branch,
+          transfer_quantity,
+        ];
+        const [mainStockUpdated] = await connection.query(
+          reduceMainStockQuery,
+          reduceParams
+        );
 
         if (mainStockUpdated.affectedRows === 0) {
           await connection.rollback();
-          return res.status(400).json({ message: "Insufficient stock in the main branch or product not found." });
+          return res
+            .status(400)
+            .json({
+              message:
+                "Insufficient stock in the main branch or product not found.",
+            });
         }
       } else {
-        // Update stock for non-mobile phone products
+        // Reduce stock for non-mobile phone products
         const reduceMainStockQuery = `
-          UPDATE stock
-          SET stock_quantity = stock_quantity - ?, updated_at = NOW()
-          WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
-        `;
-        const reduceParams = [transfer_quantity, product_id, main_branch, transfer_quantity];
-        const [mainStockUpdated] = await connection.query(reduceMainStockQuery, reduceParams);
+            UPDATE stock
+            SET stock_quantity = stock_quantity - ?, updated_at = NOW()
+            WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
+          `;
+        const reduceParams = [
+          transfer_quantity,
+          product_id,
+          main_branch,
+          transfer_quantity,
+        ];
+        const [mainStockUpdated] = await connection.query(
+          reduceMainStockQuery,
+          reduceParams
+        );
 
         if (mainStockUpdated.affectedRows === 0) {
           await connection.rollback();
-          return res.status(400).json({ message: "Insufficient stock in the main branch or product not found." });
+          return res
+            .status(400)
+            .json({
+              message:
+                "Insufficient stock in the main branch or product not found.",
+            });
         }
       }
 
-      // Log transfer
-      const insertTransferQuery = `
+      
+      // If target branch is 'repair', handle stock accordingly
+      if (target_branch === "repair") {
+        // Check if the product already exists in the repair stock
+        const checkStockQuery = `
+          SELECT * FROM stock 
+          WHERE product_id = ? AND store_name = ?;
+        `;
+        const [stockRows] = await connection.query(checkStockQuery, [
+          product_id,
+          target_branch,
+        ]);
+      
+        if (stockRows.length > 0) {
+          // Product exists, update stock quantity and append IMEI numbers if applicable
+          const imeiString = product.imei_number
+            ? product.imei_number.join(",") + ","
+            : ""; // Format IMEI numbers with comma
+          const updateStockQuery = `
+            UPDATE stock
+            SET stock_quantity = stock_quantity + ?, 
+                imei_numbers = CONCAT(imei_numbers, ?),
+                updated_at = NOW()
+            WHERE product_id = ? AND store_name = ?;
+          `;
+          await connection.query(updateStockQuery, [
+            transfer_quantity,
+            imeiString,
+            product_id,
+            target_branch,
+          ]);
+        } else {
+          // Product does not exist, insert new stock record
+          const insertStockQuery = `
+            INSERT INTO stock (store_name, product_id, stock_quantity, imei_numbers, created_at, updated_at)
+            VALUES (?, ?, ?, ?, NOW(), NOW());
+          `;
+          await connection.query(insertStockQuery, [
+            target_branch,
+            product_id,
+            transfer_quantity,
+            product.imei_number ? product.imei_number.join(",") : null,
+          ]);
+        }
+      
+        // Reduce product quantity in the products table
+        const reduceProductStockQuery = `
+          UPDATE products 
+          SET product_stock = product_stock - ?, updated_at = NOW()
+          WHERE product_id = ? AND product_stock >= ?;
+        `;
+        const [productStockUpdateResult] = await connection.query(reduceProductStockQuery, [
+          transfer_quantity,
+          product_id,
+          transfer_quantity,
+        ]);
+      
+        if (productStockUpdateResult.affectedRows === 0) {
+          await connection.rollback();
+          return res.status(400).json({ message: "Insufficient product stock in the products table." });
+        }
+      
+        // Remove IMEI numbers from the products table if applicable
+        if (product.imei_number && product.imei_number.length > 0) {
+          const imeiToRemove = product.imei_number.join(",");
+          const updateProductImeiQuery = `
+            UPDATE products
+            SET imei_number = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', imei_number, ','), CONCAT(',', ?, ','), ',')),
+                updated_at = NOW()
+            WHERE product_id = ?;
+          `;
+          await connection.query(updateProductImeiQuery, [imeiToRemove, product_id]);
+        }
+      }
+       else {
+        // Log transfer
+        const insertTransferQuery = `
         INSERT INTO transfer (
           transfer_from,
           transfer_to,
@@ -97,8 +226,18 @@ const transferStock = async (req, res) => {
           transfer_quantity
         ) VALUES (?, ?, ?, ?, ?, ?);
       `;
-      const transferParams = [main_branch, target_branch, "sending", product_id, product_type === 'Mobile Phone' ? product.imei_number.join(',') : null, transfer_quantity];
-      await connection.query(insertTransferQuery, transferParams);
+        const transferParams = [
+          main_branch,
+          target_branch,
+          "sending",
+          product_id,
+          product_type === "Mobile Phone"
+            ? product.imei_number.join(",")
+            : null,
+          transfer_quantity,
+        ];
+        await connection.query(insertTransferQuery, transferParams);
+      }
     }
 
     // Commit the transaction
@@ -107,149 +246,172 @@ const transferStock = async (req, res) => {
   } catch (err) {
     await connection.rollback();
     console.error("Error processing stock transfer:", err.message);
-    return res.status(500).json({ message: "Error inside server during stock transfer.", err });
+    return res
+      .status(500)
+      .json({ message: "Error inside server during stock transfer.", err });
   } finally {
     connection.release();
   }
 };
 
+//stock by product and store(get)
+const getStockByProductAndStore = async (req, res) => {
+  const { product_name, store_name } = req.body;
 
-
-
-
-
-  //stock by product and store(get)
-  const getStockByProductAndStore = async (req, res) => {
-   
-    const { product_name, store_name } = req.body;
-  
-    try {
-      // Fetch the product_id from the products table based on product_name
-      const getProductIdQuery = `
+  try {
+    // Fetch the product_id from the products table based on product_name
+    const getProductIdQuery = `
         SELECT product_id FROM products
         WHERE product_name = ?;
       `;
-      const [productRows] = await db.query(getProductIdQuery, [product_name]);
+    const [productRows] = await db.query(getProductIdQuery, [product_name]);
 
-      if (productRows.length === 0) { 
-         console.log("Request body", req.body ,productRows );
-        return res.status(404).json({ message: "Product not found." });
-      }
+    if (productRows.length === 0) {
+      console.log("Request body", req.body, productRows);
+      return res.status(404).json({ message: "Product not found." });
+    }
 
-      const product_id = productRows[0].product_id;
-     
-      // Fetch stock details based on store_name and product_id
-      const getStockDetailsQuery = `
+    const product_id = productRows[0].product_id;
+
+    // Fetch stock details based on store_name and product_id
+    const getStockDetailsQuery = `
         SELECT * FROM stock
         WHERE product_id = ? AND store_name = ?;
       `;
-      const [stockRows] = await db.query(getStockDetailsQuery, [product_id, store_name]);
+    const [stockRows] = await db.query(getStockDetailsQuery, [
+      product_id,
+      store_name,
+    ]);
 
-      if (stockRows.length === 0) {
-        return res.status(404).json({ message: "No stock found for this product in the specified store." });
-      }
-
-      // Return the stock details
-      return res.status(200).json(stockRows[0]);
-
-    } catch (err) {
-      console.error("Error fetching stock details:", err.message);
-      return res.status(500).json({ message: "Error inside server during fetching stock details.", err });
+    if (stockRows.length === 0) {
+      return res
+        .status(404)
+        .json({
+          message: "No stock found for this product in the specified store.",
+        });
     }
-  };
+
+    // Return the stock details
+    return res.status(200).json(stockRows[0]);
+  } catch (err) {
+    console.error("Error fetching stock details:", err.message);
+    return res
+      .status(500)
+      .json({
+        message: "Error inside server during fetching stock details.",
+        err,
+      });
+  }
+};
 
 //get  store and product categories
-  const getStoresAndCategories = async (req, res) => {
-    try {
-      // Fetch all shops
-      const getStoreQuery = `SELECT store_name FROM stores`;
-      const [storesRows] = await db.query(getStoreQuery);
-  
-      // Fetch all product types (categories)
-      const getProductTypesQuery = `SELECT DISTINCT product_type FROM products`;
-      const [productTypesRows] = await db.query(getProductTypesQuery);
-  
-      // Extract the shop names and product types
-      const stores = storesRows.map(row => row.store_name);
-      const product_types = productTypesRows.map(row => row.product_type);
-  
-      // Respond with the shops and categories
-      return res.status(200).json({
-        stores,
-        product_types,
-      });
-    } catch (err) {
-      console.error("Error fetching shops and categories:", err.message);
-      return res.status(500).json({ message: "Server error while fetching shops and categories." });
-    }
-  };
-  
+const getStoresAndCategories = async (req, res) => {
+  try {
+    // Fetch all shops
+    const getStoreQuery = `SELECT store_name FROM stores`;
+    const [storesRows] = await db.query(getStoreQuery);
 
-  //get brands of given category(get)
-  const getBrandsByCategory = async (req, res) => {
-    const { category } = req.params; // Get category from route parameters
-  
-    // Check if category is provided
-    if (!category) {
-      return res.status(400).json({ message: "Category is required." });
-    }
-  
-    try {
-      // Fetch distinct brands based on category
-      const getBrandsQuery = `
+    // Fetch all product types (categories)
+    const getProductTypesQuery = `SELECT DISTINCT product_type FROM products`;
+    const [productTypesRows] = await db.query(getProductTypesQuery);
+
+    // Extract the shop names and product types
+    const stores = storesRows.map((row) => row.store_name);
+    const product_types = productTypesRows.map((row) => row.product_type);
+
+    // Respond with the shops and categories
+    return res.status(200).json({
+      stores,
+      product_types,
+    });
+  } catch (err) {
+    console.error("Error fetching shops and categories:", err.message);
+    return res
+      .status(500)
+      .json({ message: "Server error while fetching shops and categories." });
+  }
+};
+
+//get brands of given category(get)
+const getBrandsByCategory = async (req, res) => {
+  const { category } = req.params; // Get category from route parameters
+
+  // Check if category is provided
+  if (!category) {
+    return res.status(400).json({ message: "Category is required." });
+  }
+
+  try {
+    // Fetch distinct brands based on category
+    const getBrandsQuery = `
         SELECT DISTINCT brand_name FROM products 
         WHERE product_type = ?; 
       `;
-      const [brandsRows] = await db.query(getBrandsQuery, [category]);
-  
-      // Check if any brands were found
-      if (brandsRows.length === 0) {
-        return res.status(404).json({ message: "No brands found for this category." });
-      }
-  
-      // Extract the brand names
-      const brands = brandsRows.map(row => row.brand_name); // Corrected here
-  
-      // Return the brands in the response
-      return res.status(200).json(brands);
-    } catch (err) {
-      console.error("Error fetching brands by category:", err.message);
-      return res.status(500).json({ message: "Server error while fetching brands." });
-    }
-  };
+    const [brandsRows] = await db.query(getBrandsQuery, [category]);
 
-  //get product details whne category and brand given(get)
-  const getProductsByCategoryAndBrand = async (req, res) => {
-    const { product_type, brand_name } = req.query; // Get parameters from query
-
-    // Check if both parameters are provided
-    if (!product_type || !brand_name) {
-        return res.status(400).json({ message: "Product type and brand name are required." });
+    // Check if any brands were found
+    if (brandsRows.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No brands found for this category." });
     }
 
-    try {
-        // Fetch products based on product_type and brand_name
-        const getProductsQuery = `
+    // Extract the brand names
+    const brands = brandsRows.map((row) => row.brand_name); // Corrected here
+
+    // Return the brands in the response
+    return res.status(200).json(brands);
+  } catch (err) {
+    console.error("Error fetching brands by category:", err.message);
+    return res
+      .status(500)
+      .json({ message: "Server error while fetching brands." });
+  }
+};
+
+//get product details whne category and brand given(get)
+const getProductsByCategoryAndBrand = async (req, res) => {
+  const { product_type, brand_name } = req.query; // Get parameters from query
+
+  // Check if both parameters are provided
+  if (!product_type || !brand_name) {
+    return res
+      .status(400)
+      .json({ message: "Product type and brand name are required." });
+  }
+
+  try {
+    // Fetch products based on product_type and brand_name
+    const getProductsQuery = `
             SELECT p.product_id, p.product_name, s.stock_quantity 
             FROM products p
             JOIN stock s ON p.product_id = s.product_id
             WHERE p.product_type = ? AND p.brand_name = ?;
         `;
-        const [productRows] = await db.query(getProductsQuery, [product_type, brand_name]);
+    const [productRows] = await db.query(getProductsQuery, [
+      product_type,
+      brand_name,
+    ]);
 
-        // Check if any products were found
-        if (productRows.length === 0) {
-            return res.status(404).json({ message: "No products found for this category and brand." });
-        }
-
-        // Return the products in the response
-        return res.status(200).json(productRows);
-    } catch (err) {
-        console.error("Error fetching products by category and brand:", err.message);
-        return res.status(500).json({ message: "Server error while fetching products." });
+    // Check if any products were found
+    if (productRows.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No products found for this category and brand." });
     }
-};
 
+    // Return the products in the response
+    return res.status(200).json(productRows);
+  } catch (err) {
+    console.error(
+      "Error fetching products by category and brand:",
+      err.message
+    );
+    return res
+      .status(500)
+      .json({ message: "Server error while fetching products." });
+  }
+};
 
 //transfer
 // const transferStock = async (req, res) => {
@@ -271,7 +433,7 @@ const transferStock = async (req, res) => {
 //   try {
 //       // Insert transfer record into the transfers table
 //       const createTransferQuery = `
-//           INSERT INTO transfers ( from_store, to_store, date, time, completed) 
+//           INSERT INTO transfers ( from_store, to_store, date, time, completed)
 //           VALUES (?, ?, ?, ?, ?);
 //       `;
 //       await connection.query(createTransferQuery, [ from, to, date, time, false]);
@@ -287,7 +449,7 @@ const transferStock = async (req, res) => {
 
 //           // Check if the 'from' store has sufficient stock
 //           const checkStockQuery = `
-//               SELECT stock_quantity FROM stock 
+//               SELECT stock_quantity FROM stock
 //               WHERE product_id = ? AND store_name = ?;
 //           `;
 //           const [stockRows] = await connection.query(checkStockQuery, [product_id, from]);
@@ -298,15 +460,15 @@ const transferStock = async (req, res) => {
 
 //           // Reduce stock in the 'from' store
 //           const reduceStockQuery = `
-//               UPDATE stock 
-//               SET stock_quantity = stock_quantity - ? 
+//               UPDATE stock
+//               SET stock_quantity = stock_quantity - ?
 //               WHERE product_id = ? AND store_name = ?;
 //           `;
 //           await connection.query(reduceStockQuery, [transfer_quantity, product_id, from]);
 
 //           // Add stock to the 'to' store
 //           const checkToStockQuery = `
-//               SELECT stock_quantity FROM stock 
+//               SELECT stock_quantity FROM stock
 //               WHERE product_id = ? AND store_name = ?;
 //           `;
 //           const [toStockRows] = await connection.query(checkToStockQuery, [product_id, to]);
@@ -314,15 +476,15 @@ const transferStock = async (req, res) => {
 //           if (toStockRows.length > 0) {
 //               // Product exists in the 'to' store, update stock
 //               const updateToStockQuery = `
-//                   UPDATE stock 
-//                   SET stock_quantity = stock_quantity + ? 
+//                   UPDATE stock
+//                   SET stock_quantity = stock_quantity + ?
 //                   WHERE product_id = ? AND store_name = ?;
 //               `;
 //               await connection.query(updateToStockQuery, [transfer_quantity, product_id, to]);
 //           } else {
 //               // Product doesn't exist in the 'to' store, create new stock entry
 //               const insertToStockQuery = `
-//                   INSERT INTO stock (product_id, store_name, stock_quantity) 
+//                   INSERT INTO stock (product_id, store_name, stock_quantity)
 //                   VALUES (?, ?, ?);
 //               `;
 //               await connection.query(insertToStockQuery, [product_id, to, transfer_quantity]);
@@ -367,8 +529,8 @@ const transferStock = async (req, res) => {
 //   try {
 //     // Fetch all transfer details from the database
 //     const getTransferQuery = `
-//       SELECT t.transfer_id, t.transfer_from, t.transfer_to, t.transfer_status, 
-//              t.transfer_date, t.transfer_time, p.product_id, p.product_name, 
+//       SELECT t.transfer_id, t.transfer_from, t.transfer_to, t.transfer_status,
+//              t.transfer_date, t.transfer_time, p.product_id, p.product_name,
 //              t.transfer_quantity, t.imei_number
 //       FROM transfer t
 //       JOIN products p ON t.product_name = p.product_name;
@@ -416,14 +578,22 @@ const transferStock = async (req, res) => {
 //   }
 // };
 
-
 // Function to handle product requests
 const requestProduct = async (req, res) => {
   const { products, store_id } = req.body;
 
   // Validate the request body
-  if (!products || !Array.isArray(products) || products.length === 0 || !store_id) {
-    return res.status(400).json({ message: "Invalid request body. Please include products and store_id." });
+  if (
+    !products ||
+    !Array.isArray(products) ||
+    products.length === 0 ||
+    !store_id
+  ) {
+    return res
+      .status(400)
+      .json({
+        message: "Invalid request body. Please include products and store_id.",
+      });
   }
 
   const connection = await db.getConnection(); // Get a connection from the pool
@@ -446,7 +616,11 @@ const requestProduct = async (req, res) => {
       }
 
       // Insert the product request into the request table
-      await connection.query(insertRequestQuery, [request_quantity, product_id, store_id]);
+      await connection.query(insertRequestQuery, [
+        request_quantity,
+        product_id,
+        store_id,
+      ]);
     }
 
     // Commit the transaction
@@ -457,22 +631,23 @@ const requestProduct = async (req, res) => {
     // Rollback transaction on error
     await connection.rollback();
     console.error("Error processing product request:", err.message);
-    return res.status(500).json({ message: "Error inside server while adding request.", err });
+    return res
+      .status(500)
+      .json({ message: "Error inside server while adding request.", err });
   } finally {
     // Release the connection back to the pool
     connection.release();
   }
 };
 
-
-
-
 const getProductRequests = async (req, res) => {
   const { store_id } = req.query;
 
   // Validate store_id
   if (!store_id) {
-    return res.status(400).json({ message: "Please provide a valid store_id." });
+    return res
+      .status(400)
+      .json({ message: "Please provide a valid store_id." });
   }
 
   try {
@@ -497,7 +672,9 @@ const getProductRequests = async (req, res) => {
     const [requests] = await db.query(requestQuery, [store_id]);
 
     if (requests.length === 0) {
-      return res.status(404).json({ message: "No requests found for this store." });
+      return res
+        .status(404)
+        .json({ message: "No requests found for this store." });
     }
 
     // Group requests by request_id
@@ -527,7 +704,9 @@ const getProductRequests = async (req, res) => {
     return res.status(200).json(result);
   } catch (err) {
     console.error("Error fetching requests:", err.message);
-    return res.status(500).json({ message: "Error inside server while fetching requests.", err });
+    return res
+      .status(500)
+      .json({ message: "Error inside server while fetching requests.", err });
   }
 };
 
@@ -536,7 +715,9 @@ const deleteRequest = async (req, res) => {
 
   // Validate input parameters
   if (!store_id || !request_id) {
-    return res.status(400).json({ message: "Please provide both store_id and request_id." });
+    return res
+      .status(400)
+      .json({ message: "Please provide both store_id and request_id." });
   }
 
   try {
@@ -557,16 +738,19 @@ const deleteRequest = async (req, res) => {
     return res.status(200).json({ message: "Request deleted successfully." });
   } catch (err) {
     console.error("Error deleting request:", err.message);
-    return res.status(500).json({ message: "Error inside server while deleting request.", err });
+    return res
+      .status(500)
+      .json({ message: "Error inside server while deleting request.", err });
   }
 };
-
 
 const getAllTransfers = async (req, res) => {
   const { store_id } = req.query;
 
   if (!store_id) {
-    return res.status(400).json({ message: "Please provide a valid store_id." });
+    return res
+      .status(400)
+      .json({ message: "Please provide a valid store_id." });
   }
 
   try {
@@ -605,7 +789,9 @@ const getAllTransfers = async (req, res) => {
     const [transfers] = await db.query(transferQuery, [storeName]);
 
     if (transfers.length === 0) {
-      return res.status(404).json({ message: "No transfers found for this store." });
+      return res
+        .status(404)
+        .json({ message: "No transfers found for this store." });
     }
 
     // Grouping transfers by transfer_id
@@ -636,7 +822,9 @@ const getAllTransfers = async (req, res) => {
     return res.status(200).json(result);
   } catch (err) {
     console.error("Error fetching transfers from admin:", err.message);
-    return res.status(500).json({ message: "Error inside server while fetching transfers.", err });
+    return res
+      .status(500)
+      .json({ message: "Error inside server while fetching transfers.", err });
   }
 };
 
@@ -659,7 +847,9 @@ const markTransferAsRead = async (req, res) => {
       SET transfer_approval = 'received' 
       WHERE transfer_id = ?;
     `;
-    const [updateResult] = await connection.query(updateTransferQuery, [transfer_id]);
+    const [updateResult] = await connection.query(updateTransferQuery, [
+      transfer_id,
+    ]);
 
     if (updateResult.affectedRows === 0) {
       await connection.rollback();
@@ -672,21 +862,31 @@ const markTransferAsRead = async (req, res) => {
       FROM transfer 
       WHERE transfer_id = ?;
     `;
-    const [transferDetails] = await connection.query(transferDetailsQuery, [transfer_id]);
+    const [transferDetails] = await connection.query(transferDetailsQuery, [
+      transfer_id,
+    ]);
 
     if (transferDetails.length === 0) {
       await connection.rollback();
       return res.status(404).json({ message: "Transfer details not found." });
     }
 
-    const { transfer_to: target_branch, product_id, transfer_quantity, imei_number } = transferDetails[0];
+    const {
+      transfer_to: target_branch,
+      product_id,
+      transfer_quantity,
+      imei_number,
+    } = transferDetails[0];
 
     // Check if the product already exists in the target branch stock
     const checkStockQuery = `
       SELECT * FROM stock 
       WHERE product_id = ? AND store_name = ?;
     `;
-    const [stockRows] = await connection.query(checkStockQuery, [product_id, target_branch]);
+    const [stockRows] = await connection.query(checkStockQuery, [
+      product_id,
+      target_branch,
+    ]);
 
     if (stockRows.length > 0) {
       // Product exists, update stock quantity and append IMEI numbers
@@ -697,27 +897,46 @@ const markTransferAsRead = async (req, res) => {
             updated_at = NOW()
         WHERE product_id = ? AND store_name = ?;
       `;
-      const imeiString = imei_number ? imei_number + ',' : ''; // Format IMEI numbers with comma
-      await connection.query(updateStockQuery, [transfer_quantity, imeiString, product_id, target_branch]);
+      const imeiString = imei_number ? imei_number + "," : ""; // Format IMEI numbers with comma
+      await connection.query(updateStockQuery, [
+        transfer_quantity,
+        imeiString,
+        product_id,
+        target_branch,
+      ]);
     } else {
       // Product does not exist, insert new stock record
       const insertStockQuery = `
         INSERT INTO stock (store_name, product_id, stock_quantity, imei_numbers, created_at, updated_at)
         VALUES (?, ?, ?, ?, NOW(), NOW());
       `;
-      await connection.query(insertStockQuery, [target_branch, product_id, transfer_quantity, imei_number]);
+      await connection.query(insertStockQuery, [
+        target_branch,
+        product_id,
+        transfer_quantity,
+        imei_number,
+      ]);
     }
 
     // Commit the transaction
     await connection.commit();
 
-    return res.status(200).json({ message: "Transfer marked as received and stock updated for the target branch." });
+    return res
+      .status(200)
+      .json({
+        message:
+          "Transfer marked as received and stock updated for the target branch.",
+      });
   } catch (err) {
     // Rollback transaction on error
     await connection.rollback();
-    console.error("Error marking transfer as read and updating stock:", err.message);
+    console.error(
+      "Error marking transfer as read and updating stock:",
+      err.message
+    );
     return res.status(500).json({
-      message: "Error inside server while marking transfer as read and updating stock",
+      message:
+        "Error inside server while marking transfer as read and updating stock",
       err,
     });
   } finally {
@@ -755,7 +974,16 @@ const getAllPendingRequests = async (req, res) => {
     // Grouping requests by request_id and shop
     const groupedRequests = {};
     requests.forEach((row) => {
-      const { request_id, shop, date, time, product_name, brand_name, product_type, request_quantity } = row;
+      const {
+        request_id,
+        shop,
+        date,
+        time,
+        product_name,
+        brand_name,
+        product_type,
+        request_quantity,
+      } = row;
 
       if (!groupedRequests[request_id]) {
         groupedRequests[request_id] = {
@@ -783,14 +1011,17 @@ const getAllPendingRequests = async (req, res) => {
     console.error("Error fetching pending requests:", err.message);
     return res
       .status(500)
-      .json({ message: "Error inside server while fetching pending requests.", err });
+      .json({
+        message: "Error inside server while fetching pending requests.",
+        err,
+      });
   }
 };
 
 const getTransferDetails = async (req, res) => {
   try {
-      // SQL query to retrieve transfer details with associated product data
-      const sql = `
+    // SQL query to retrieve transfer details with associated product data
+    const sql = `
           SELECT 
               t.transfer_id,
               t.transfer_from AS 'from',
@@ -811,48 +1042,50 @@ const getTransferDetails = async (req, res) => {
               t.transfer_id, p.product_id;
       `;
 
-      const [transfers] = await db.query(sql);
+    const [transfers] = await db.query(sql);
 
-      if (!transfers || transfers.length === 0) {
-          return res.status(404).json({ message: "No transfer records found." });
+    if (!transfers || transfers.length === 0) {
+      return res.status(404).json({ message: "No transfer records found." });
+    }
+
+    // Format transfer data
+    const formattedTransfers = transfers.reduce((acc, row) => {
+      let transfer = acc.find((t) => t.transfer_id === row.transfer_id);
+
+      if (!transfer) {
+        transfer = {
+          transfer_id: row.transfer_id,
+          products: [],
+          from: row.from,
+          to: row.to,
+          date: row.date,
+          time: row.time,
+          completed: row.transfer_approval === "received",
+        };
+        acc.push(transfer);
       }
 
-      // Format transfer data
-      const formattedTransfers = transfers.reduce((acc, row) => {
-          let transfer = acc.find(t => t.transfer_id === row.transfer_id);
+      // Convert comma-separated IMEI numbers to an array
+      const imeiNumbers = row.imei_number ? row.imei_number.split(",") : [];
 
-          if (!transfer) {
-              transfer = {
-                  transfer_id: row.transfer_id,
-                  products: [],
-                  from: row.from,
-                  to: row.to,
-                  date: row.date,
-                  time: row.time,
-                  completed: row.transfer_approval === 'received'
-              };
-              acc.push(transfer);
-          }
+      // Add product details
+      transfer.products.push({
+        product_id: row.product_id,
+        product_name: row.product_name,
+        stock_quantity: row.product_stock,
+        transfer_quantity: row.transfer_quantity,
+        imei_number: imeiNumbers,
+      });
 
-          // Convert comma-separated IMEI numbers to an array
-          const imeiNumbers = row.imei_number ? row.imei_number.split(',') : [];
+      return acc;
+    }, []);
 
-          // Add product details
-          transfer.products.push({
-              product_id: row.product_id,
-              product_name: row.product_name,
-              stock_quantity: row.product_stock,
-              transfer_quantity: row.transfer_quantity,
-              imei_number: imeiNumbers
-          });
-
-          return acc;
-      }, []);
-
-      return res.json(formattedTransfers);
+    return res.json(formattedTransfers);
   } catch (err) {
-      console.error("Error fetching transfer details:", err.message);
-      return res.status(500).json({ message: "Error fetching transfer details", err });
+    console.error("Error fetching transfer details:", err.message);
+    return res
+      .status(500)
+      .json({ message: "Error fetching transfer details", err });
   }
 };
 
@@ -861,7 +1094,9 @@ const markRequestAsRead = async (req, res) => {
 
   // Validate the request ID
   if (!request_id) {
-    return res.status(400).json({ message: "Please provide a valid request_id." });
+    return res
+      .status(400)
+      .json({ message: "Please provide a valid request_id." });
   }
 
   try {
@@ -875,34 +1110,38 @@ const markRequestAsRead = async (req, res) => {
     const [result] = await db.query(updateRequestQuery, [request_id]);
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Request not found or already marked as read." });
+      return res
+        .status(404)
+        .json({ message: "Request not found or already marked as read." });
     }
 
-    return res.status(200).json({ message: "Request status updated successfully." });
+    return res
+      .status(200)
+      .json({ message: "Request status updated successfully." });
   } catch (err) {
     console.error("Error marking request as read:", err.message);
-    return res.status(500).json({ message: "Error inside server while updating request status.", err });
+    return res
+      .status(500)
+      .json({
+        message: "Error inside server while updating request status.",
+        err,
+      });
   }
 };
 
+module.exports = {
+  getStockByProductAndStore,
 
-
-
-  module.exports = {
-    
-    getStockByProductAndStore,
-    
-    getStoresAndCategories,
-    getBrandsByCategory,
-    getProductsByCategoryAndBrand,
-    transferStock,
-    getAllPendingRequests,
-    markRequestAsRead,
-    getTransferDetails,
-    requestProduct,
-    getProductRequests,
-    deleteRequest,
-    getAllTransfers,
-    markTransferAsRead,
- 
-  };
+  getStoresAndCategories,
+  getBrandsByCategory,
+  getProductsByCategoryAndBrand,
+  transferStock,
+  getAllPendingRequests,
+  markRequestAsRead,
+  getTransferDetails,
+  requestProduct,
+  getProductRequests,
+  deleteRequest,
+  getAllTransfers,
+  markTransferAsRead,
+};
