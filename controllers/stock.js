@@ -10,62 +10,92 @@ const transferStock = async (req, res) => {
     return res.status(400).json({ message: "Invalid request body. Please include products, from, and to." });
   }
 
-  const connection = await db.getConnection(); // Get a connection from the pool
-  await connection.beginTransaction(); // Start the transaction
+  const connection = await db.getConnection();
+  await connection.beginTransaction();
 
   try {
     for (let product of products) {
-      const { product_id, transfer_quantity, imei_number = [] } = product;
+      const product_id = parseInt(product.product_id, 10);
+      const transfer_quantity = parseInt(product.transfer_quantity, 10);
+      const imei_number = product.imei_number.filter(num => num.trim() !== ""); // Remove empty IMEIs
 
-      // Reduce the stock from the main branch only
+      // Validate cleaned data
+      if (!product_id || !transfer_quantity) {
+        await connection.rollback();
+        return res.status(400).json({ message: "Product ID or transfer quantity is invalid." });
+      }
+      if (imei_number.length !== transfer_quantity) {
+        await connection.rollback();
+        return res.status(400).json({ message: "Provided IMEI numbers count does not match the transfer quantity." });
+      }
+
+      // Check product existence
+      const productQuery = `SELECT imei_number FROM products WHERE product_id = ?;`;
+      const [productRows] = await connection.query(productQuery, [product_id]);
+
+      if (!productRows.length) {
+        await connection.rollback();
+        return res.status(400).json({ message: "Product not found." });
+      }
+
+      // Check IMEI availability
+      if (imei_number.length) {
+        const checkImeiQuery = `
+          SELECT imei_numbers FROM stock
+          WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
+        `;
+        const [imeiRows] = await connection.query(checkImeiQuery, [product_id, main_branch, transfer_quantity]);
+
+        if (!imeiRows.length || !imei_number.every(num => imeiRows[0].imei_numbers.split(',').includes(num))) {
+          await connection.rollback();
+          return res.status(400).json({ message: "IMEI numbers not available in the main branch stock." });
+        }
+      }
+
+      // Update stock and remove IMEIs
       const reduceMainStockQuery = `
         UPDATE stock
-        SET stock_quantity = stock_quantity - ?, updated_at = NOW()
-        ${imei_number.length ? ", imei_numbers = REPLACE(imei_numbers, ?, '')" : ""}
+        SET stock_quantity = stock_quantity - ?, updated_at = NOW(),
+            imei_numbers = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', imei_numbers, ','), CONCAT(',', ?, ','), ','))
         WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
       `;
-      const reduceParams = imei_number.length
-        ? [transfer_quantity, imei_number.join(','), product_id, main_branch, transfer_quantity]
-        : [transfer_quantity, product_id, main_branch, transfer_quantity];
+      const reduceParams = [transfer_quantity, imei_number.join(','), product_id, main_branch, transfer_quantity];
       const [mainStockUpdated] = await connection.query(reduceMainStockQuery, reduceParams);
 
       if (mainStockUpdated.affectedRows === 0) {
-        // Rollback transaction if there's insufficient stock or product not found
         await connection.rollback();
         return res.status(400).json({ message: "Insufficient stock in the main branch or product not found." });
       }
 
-      // Log the transfer details in the `transfer` table without updating target branch stock
+      // Log transfer
       const insertTransferQuery = `
         INSERT INTO transfer (
           transfer_from,
           transfer_to,
           transfer_approval,
           product_id,
-          ${imei_number.length ? "imei_number," : ""}
+          imei_number,
           transfer_quantity
-        ) VALUES (?, ?, ?, ?, ${imei_number.length ? "?, " : ""}?);
+        ) VALUES (?, ?, ?, ?, ?, ?);
       `;
-      const transferParams = imei_number.length
-        ? [main_branch, target_branch, "sending", product_id, imei_number.join(','), transfer_quantity]
-        : [main_branch, target_branch, "sending", product_id, transfer_quantity];
+      const transferParams = [main_branch, target_branch, "sending", product_id, imei_number.join(','), transfer_quantity];
       await connection.query(insertTransferQuery, transferParams);
     }
 
     // Commit the transaction
     await connection.commit();
-
-    return res.status(200).json({ message: "Transfer recorded without updating target branch stock." });
+    return res.status(200).json({ message: "Transfer recorded successfully." });
   } catch (err) {
-    // Rollback transaction on error
     await connection.rollback();
     console.error("Error processing stock transfer:", err.message);
     return res.status(500).json({ message: "Error inside server during stock transfer.", err });
   } finally {
-    // Release the connection back to the pool
     connection.release();
   }
 };
+
+
+
 
 
 
