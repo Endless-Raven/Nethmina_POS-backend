@@ -448,7 +448,8 @@ const getitembycode = async (req,res) =>{
       product_stock, 
       product_type, 
       brand_name, 
-      product_model
+      product_model,
+      max_discount
     FROM 
       products
     WHERE 
