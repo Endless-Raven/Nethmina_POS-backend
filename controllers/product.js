@@ -687,11 +687,25 @@ const getProductDetails = async (req, res) => {
     const [products] = await db.query(productQuery, [imei_number]);
 
     if (products.length > 0) {
-      // Product is in stock, return the details with sold = false
-      return res.status(200).json({
-        ...products[0],
-        sold: false  // explicitly set sold to false
-      });
+      // Product is in stock, return the details with sold = false and transfer = false by default
+      let productDetails = { ...products[0], sold: false, transfer: false };
+
+      // Check if the product is also in the transfer table
+      const transferQuery = `
+        SELECT transfer_to 
+        FROM transfer 
+        WHERE FIND_IN_SET(?, imei_number) > 0 
+          AND transfer_approval = 'sending';
+      `;
+      const [transfers] = await db.query(transferQuery, [imei_number]);
+
+      if (transfers.length > 0) {
+        // IMEI is in the transfer table with status "sending"
+        productDetails.transfer = true;
+        productDetails.transfer_to = transfers[0].transfer_to;
+      }
+
+      return res.status(200).json(productDetails);
     }
 
     // Step 2: If not found in 'products', check if it exists in 'sales_items' (sold)
@@ -711,10 +725,11 @@ const getProductDetails = async (req, res) => {
     const [soldProducts] = await db.query(soldQuery, [imei_number]);
 
     if (soldProducts.length > 0) {
-      // Product has been sold, return the details with sold = true
+      // Product has been sold, return the details with sold = true and transfer = false
       return res.status(200).json({
         ...soldProducts[0],
-        sold: true  // explicitly set sold to true
+        sold: true,
+        transfer: false
       });
     }
 
