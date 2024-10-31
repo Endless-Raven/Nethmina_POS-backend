@@ -862,7 +862,7 @@ const sendLowStockEmail = async () => {
 };
 
 // Schedule the task to run daily at 9:00 AM
-cron.schedule('8 23 * * *', () => {
+cron.schedule('00 23 * * *', () => {
   console.log('Checking low stock items and sending email...');
   sendLowStockEmail();
 });
