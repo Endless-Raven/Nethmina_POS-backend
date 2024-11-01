@@ -123,19 +123,34 @@ console.log(totalExpense);
 
 // Fetch Daily Report
 const getDailyReport = async (req, res) => {
-    const { date } = req.query;
+    const { date, store_name } = req.query;
 
     if (!date) {
         return res.status(400).json({ message: "Date parameter is required." });
     }
 
     try {
+        // Step 1: Get the store_id based on store_name
+        const storeIdQuery = `
+            SELECT store_id 
+            FROM stores 
+            WHERE store_name = ?;
+        `;
+        const [storeResult] = await db.query(storeIdQuery, [store_name]);
+
+        if (storeResult.length === 0) {
+            return res.status(404).json({ message: "Store not found." });
+        }
+
+        const store_id = storeResult[0].store_id;
+
+        // Step 2: Query for income
         const incomeSql = `
             SELECT 
                 income.store_id AS store_id, 
                 stores.store_name, 
-                income_category AS category, 
-                income_amount AS amount, 
+                income.income_category AS category, 
+                income.income_amount AS amount, 
                 TIME_FORMAT(income.created_at, '%H:%i') AS time, 
                 true AS is_income
             FROM 
@@ -144,14 +159,16 @@ const getDailyReport = async (req, res) => {
                 stores ON income.store_id = stores.store_id
             WHERE 
                 DATE(income.created_at) = ?
+                AND income.store_id = ?;
         `;
 
+        // Step 3: Query for expense
         const expenseSql = `
             SELECT 
                 expense.store_id AS store_id, 
                 stores.store_name, 
-                expense_category AS category, 
-                expense_amount AS amount, 
+                expense.expense_category AS category, 
+                expense.expense_amount AS amount, 
                 TIME_FORMAT(expense.created_at, '%H:%i') AS time, 
                 false AS is_income
             FROM 
@@ -160,10 +177,11 @@ const getDailyReport = async (req, res) => {
                 stores ON expense.store_id = stores.store_id
             WHERE 
                 DATE(expense.created_at) = ?
+                AND expense.store_id = ?;
         `;
 
-        const [incomeResults] = await db.query(incomeSql, [date]);
-        const [expenseResults] = await db.query(expenseSql, [date]);
+        const [incomeResults] = await db.query(incomeSql, [date, store_id]);
+        const [expenseResults] = await db.query(expenseSql, [date, store_id]);
 
         // Combine and sort all results by time
         const reportData = incomeResults.concat(expenseResults).sort((a, b) => 
@@ -271,7 +289,7 @@ const updateMonthlyReport = async () => {
 };
 
 // Schedule to run on the first day of every month at midnight
-cron.schedule("27 11 * * *", () => {
+cron.schedule("58 23 * * *", () => {
     updateMonthlyReport();
 });
 module.exports = {
