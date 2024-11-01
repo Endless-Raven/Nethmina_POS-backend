@@ -212,6 +212,29 @@ const makesale = async (req, res) => {
         if (stockUpdated.affectedRows === 0) {
           throw new Error(`Failed to update stock for product ${product_id} in store ${store_name}.`);
         }
+      }else {
+        // For non-mobile phones, update product stock and set IMEI number to an empty string
+        const [productStockUpdated] = await db.query(
+          updateProductStockAndImeiQuery,
+          [quantity, "", product_id, quantity] // Set IMEI number to an empty string
+        );
+      
+        if (productStockUpdated.affectedRows === 0) {
+          throw new Error(`Failed to update stock for product ${product_id}.`);
+        }
+      
+        // Update store stock and set IMEI numbers to an empty string
+        const [stockUpdated] = await db.query(updateStockQuery, [
+          quantity,
+          "", // Set IMEI numbers to an empty string for non-mobile products
+          store_name,
+          product_id,
+          quantity,
+        ]);
+      
+        if (stockUpdated.affectedRows === 0) {
+          throw new Error(`Failed to update stock for product ${product_id} in store ${store_name}.`);
+        }
       }
 
       // Insert all product details into the sales_items table
