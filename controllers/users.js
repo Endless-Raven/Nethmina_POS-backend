@@ -140,7 +140,7 @@ const addUser = async (req, res) => {
     ]);
 
     // If the role is "cashier", also insert into the cashiers table
-    if (role === "cashier") {
+   
       const insertCashierQuery = `
         INSERT INTO cashiers (cashier_name, cashier_email, cashier_phone_number, store_id, created_at)
         VALUES (?, ?, ?, ?, NOW())
@@ -152,7 +152,7 @@ const addUser = async (req, res) => {
         phone,
         store_id,
       ]);
-    }
+  
 
     res.json({ message: "Employee account added successfully" });
   } catch (err) {
