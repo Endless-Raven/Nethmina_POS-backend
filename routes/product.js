@@ -16,7 +16,8 @@ const { additem ,
       updateStockAndIMEI,
       getProductDetails,
       getitembycode,
-      getitembyname
+      getitembyname,
+      getProductforMangerinventory
     } = require("../controllers/product");
 
 
@@ -36,6 +37,9 @@ router.delete("/:product_name",deleteitem); //delete item
 router.get("/getProductTypes/get",getProductTypes); //get product type list for POS
 router.get("/brands/byproducttype",getBrandsByProductType); //get brand list for POS
 router.get("/models/bybrand",getProductModelsByBrandName); //get models list for POS
+
+router.get("/inventory/stock",getProductforMangerinventory); //get products for manger inventory
+
 
 router.post("/getFiltered/ProductDetails",getFilteredProductDetails); //get products filterd for inventory
 

@@ -159,9 +159,27 @@ const getBrandsByProductType = async (req, res) => {
 }
 
 const getFilteredProductDetails = async (req, res) => {
-  const { product_name, store_name, brand_name, product_type } = req.body;
+  const { product_name, store_name, brand_name, product_type, store_id } = req.body;
 
   try {
+    let resolvedStoreName = store_name;
+
+    // Check if `store_id` is provided and fetch `store_name` if needed
+    if (store_id) {
+      const sql = `
+        SELECT store_name
+        FROM stores
+        WHERE store_id = ?
+      `;
+      const [storeResult] = await db.query(sql, [store_id]);
+
+      if (storeResult.length > 0) {
+        resolvedStoreName = storeResult[0].store_name;
+      } else {
+        return res.status(404).json({ message: "Store not found" });
+      }
+    }
+
     console.log("Fetching all product details...");
     // Fetch all products and stock data from the database
     const [rows] = await db.query(`
@@ -172,18 +190,17 @@ const getFilteredProductDetails = async (req, res) => {
 
     console.log("Applying filters...");
 
-    // Apply .filter() based on conditions
+    // Apply .filter() based on conditions, using the resolved store name if available
     const filteredProducts = rows.filter((product) => {
       return (
         (!product_name || product_name === "All" || product.product_name.toLowerCase().includes(product_name.toLowerCase())) &&
-        (!store_name || store_name === "All" || product.store_name.toLowerCase().includes(store_name.toLowerCase())) &&
+        (!resolvedStoreName || resolvedStoreName === "All" || product.store_name.toLowerCase().includes(resolvedStoreName.toLowerCase())) &&
         (!brand_name || brand_name === "All" || product.brand_name.toLowerCase().includes(brand_name.toLowerCase())) &&
         (!product_type || product_type === "All" || product.product_type.toLowerCase().includes(product_type.toLowerCase()))
       );
     });
 
-   // console.log("Filtered products:", filteredProducts);
-    console.log("rhtrh",store_name);
+    console.log("Filtered products:", filteredProducts);
     return res.json(filteredProducts);
   } catch (err) {
     console.error("Error fetching product details:", err.message);
@@ -192,7 +209,56 @@ const getFilteredProductDetails = async (req, res) => {
 };
 
 
+// Get all products by brand name and product type
+const getProductforMangerinventory = async (req, res) => {
+  const { brand_name, product_type, store_id } = req.query; // Get brand_name, product_type, and store_id from request query parameters
 
+  const productQuery = `
+    SELECT 
+      products.*,
+      GROUP_CONCAT(sales_items.imei_number) AS imei_numbers
+    FROM products
+    LEFT JOIN sales_items ON products.product_id = sales_items.product_id
+    WHERE products.brand_name = ? AND products.product_type = ?
+    GROUP BY products.product_id;`;
+
+  try {
+    console.log(`Fetching products for brand: ${brand_name} and product type: ${product_type}...`);
+
+    // Query products and IMEI numbers
+    const [productRows] = await db.query(productQuery, [brand_name, product_type]);
+
+    // Query to get the store name
+    const storeQuery = `SELECT store_name FROM stores WHERE store_id = ?;`;
+    const [storeRows] = await db.query(storeQuery, [store_id]);
+    const storeName = storeRows.length > 0 ? storeRows[0].store_name : null;
+
+    // Process each product row and get stock quantity
+    const processedRows = await Promise.all(
+      productRows.map(async (row) => {
+        const imeiArray = row.imei_numbers ? row.imei_numbers.split(',') : [];
+        
+        // Get stock quantity for the current product
+        const stockQuery = `SELECT stock_quantity FROM stock WHERE product_id = ? AND store_name = ?;`;
+        const [stockRows] = await db.query(stockQuery, [row.product_id, storeName]);
+        const stockQuantity = stockRows.length > 0 ? stockRows[0].stock_quantity : 0;
+
+        // Return product data with IMEI numbers as an array and stock quantity
+        return {
+          ...row,
+          imei_numbers: imeiArray,
+          stock_quantity: stockQuantity,
+        };
+      })
+    );
+
+    // Return all processed product details with IMEI numbers as arrays and stock quantities
+    return res.json(processedRows);
+  } catch (err) {
+    console.error("Error fetching products:", err.message);
+    return res.status(500).json({ message: "Error inside server", err });
+  }
+};
 
 
 // Get all products by brand name and product type
@@ -448,7 +514,9 @@ const getitembycode = async (req,res) =>{
       product_stock, 
       product_type, 
       brand_name, 
-      product_model
+      imei_number,
+      product_model,
+      max_discount
     FROM 
       products
     WHERE 
@@ -592,7 +660,7 @@ const updateStockAndIMEI = async (req, res) => {
   `;
 
   const { product_name } = req.params; // Extract product_name from the request URL
-  const { product_stock, imei_number, user } = req.body; // Extract new stock and IMEI numbers
+  const { product_stock, imei_number, user, category } = req.body; // Extract new stock and IMEI numbers
   const getStoreNameQuery = `SELECT s.store_name FROM users u JOIN stores s ON u.store_id = s.store_id WHERE u.user_id = ?`;
 
   try {
@@ -613,9 +681,19 @@ const updateStockAndIMEI = async (req, res) => {
     let currentIMEINumbers = product[0].imei_number ? product[0].imei_number.split(",") : [];
     const productId = product[0].product_id;
 
-    // Step 3: Merge new IMEI numbers with existing ones
-    const newIMEINumbers = Array.isArray(imei_number) ? imei_number : [imei_number];
-    const updatedIMEINumbers = [...currentIMEINumbers, ...newIMEINumbers].join(",");
+    // Step 3: Update IMEI numbers conditionally based on category
+    let newIMEINumbers = []; // Declare outside for scope access
+    if (category === 'Mobile Phone') {
+      // Ensure imei_number is present and valid when category is 'Mobile Phone'
+      if (!imei_number || !Array.isArray(imei_number) || imei_number.length === 0 || imei_number.includes(null)) {
+        return res.status(400).json({ message: "IMEI number is required for Mobile Phone category." });
+      }
+      newIMEINumbers = imei_number.filter(imei => imei); // Filter out null or invalid values
+      updatedIMEINumbers = [...currentIMEINumbers, ...newIMEINumbers].join(",");
+    } else {
+      // If the category is not 'Mobile Phone', do not include IMEI numbers
+      updatedIMEINumbers = currentIMEINumbers.join(","); // Keep existing IMEI numbers
+    }
 
     // Step 4: Update stock in products table by adding new quantity
     const updatedStock = currentStock + Number(product_stock);
@@ -630,7 +708,9 @@ const updateStockAndIMEI = async (req, res) => {
 
       // Merge IMEI numbers and update stock quantity
       const updatedStockQuantityInStore = currentStockQuantity + Number(product_stock);
-      const updatedIMEINumbersInStore = [...existingIMEINumbersInStock, ...newIMEINumbers].join(",");
+      const updatedIMEINumbersInStore = category === 'Mobile Phone'
+        ? [...existingIMEINumbersInStock, ...newIMEINumbers].join(",") 
+        : existingIMEINumbersInStock.join(",");
 
       await db.query(sqlUpdateStock, [
         updatedStockQuantityInStore,
@@ -648,7 +728,7 @@ const updateStockAndIMEI = async (req, res) => {
         storeName,
         productId,
         product_stock,
-        newIMEINumbers.join(","),
+        category === 'Mobile Phone' ? newIMEINumbers.join(",") : "",
       ]);
     }
 
@@ -659,6 +739,8 @@ const updateStockAndIMEI = async (req, res) => {
     return res.status(500).json({ message: "Error inside server.", err });
   }
 };
+
+
 
 const getProductDetails = async (req, res) => {
   const { imei_number } = req.query;
@@ -687,11 +769,25 @@ const getProductDetails = async (req, res) => {
     const [products] = await db.query(productQuery, [imei_number]);
 
     if (products.length > 0) {
-      // Product is in stock, return the details with sold = false
-      return res.status(200).json({
-        ...products[0],
-        sold: false  // explicitly set sold to false
-      });
+      // Product is in stock, return the details with sold = false and transfer = false by default
+      let productDetails = { ...products[0], sold: false, transfer: false };
+
+      // Check if the product is also in the transfer table
+      const transferQuery = `
+        SELECT transfer_to 
+        FROM transfer 
+        WHERE FIND_IN_SET(?, imei_number) > 0 
+          AND transfer_approval = 'sending';
+      `;
+      const [transfers] = await db.query(transferQuery, [imei_number]);
+
+      if (transfers.length > 0) {
+        // IMEI is in the transfer table with status "sending"
+        productDetails.transfer = true;
+        productDetails.transfer_to = transfers[0].transfer_to;
+      }
+
+      return res.status(200).json(productDetails);
     }
 
     // Step 2: If not found in 'products', check if it exists in 'sales_items' (sold)
@@ -711,10 +807,11 @@ const getProductDetails = async (req, res) => {
     const [soldProducts] = await db.query(soldQuery, [imei_number]);
 
     if (soldProducts.length > 0) {
-      // Product has been sold, return the details with sold = true
+      // Product has been sold, return the details with sold = true and transfer = false
       return res.status(200).json({
         ...soldProducts[0],
-        sold: true  // explicitly set sold to true
+        sold: true,
+        transfer: false
       });
     }
 
@@ -783,7 +880,7 @@ const sendLowStockEmail = async () => {
 };
 
 // Schedule the task to run daily at 9:00 AM
-cron.schedule('8 23 * * *', () => {
+cron.schedule('00 23 * * *', () => {
   console.log('Checking low stock items and sending email...');
   sendLowStockEmail();
 });
@@ -808,7 +905,8 @@ module.exports = {
     updateStockAndIMEI,
     getProductDetails,
     getitembycode,
-    getitembyname
+    getitembyname,
+    getProductforMangerinventory
   };
   
 
