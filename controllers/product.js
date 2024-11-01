@@ -159,9 +159,27 @@ const getBrandsByProductType = async (req, res) => {
 }
 
 const getFilteredProductDetails = async (req, res) => {
-  const { product_name, store_name, brand_name, product_type } = req.body;
+  const { product_name, store_name, brand_name, product_type, store_id } = req.body;
 
   try {
+    let resolvedStoreName = store_name;
+
+    // Check if `store_id` is provided and fetch `store_name` if needed
+    if (store_id) {
+      const sql = `
+        SELECT store_name
+        FROM stores
+        WHERE store_id = ?
+      `;
+      const [storeResult] = await db.query(sql, [store_id]);
+
+      if (storeResult.length > 0) {
+        resolvedStoreName = storeResult[0].store_name;
+      } else {
+        return res.status(404).json({ message: "Store not found" });
+      }
+    }
+
     console.log("Fetching all product details...");
     // Fetch all products and stock data from the database
     const [rows] = await db.query(`
@@ -172,24 +190,24 @@ const getFilteredProductDetails = async (req, res) => {
 
     console.log("Applying filters...");
 
-    // Apply .filter() based on conditions
+    // Apply .filter() based on conditions, using the resolved store name if available
     const filteredProducts = rows.filter((product) => {
       return (
         (!product_name || product_name === "All" || product.product_name.toLowerCase().includes(product_name.toLowerCase())) &&
-        (!store_name || store_name === "All" || product.store_name.toLowerCase().includes(store_name.toLowerCase())) &&
+        (!resolvedStoreName || resolvedStoreName === "All" || product.store_name.toLowerCase().includes(resolvedStoreName.toLowerCase())) &&
         (!brand_name || brand_name === "All" || product.brand_name.toLowerCase().includes(brand_name.toLowerCase())) &&
         (!product_type || product_type === "All" || product.product_type.toLowerCase().includes(product_type.toLowerCase()))
       );
     });
 
-   // console.log("Filtered products:", filteredProducts);
-    console.log("rhtrh",store_name);
+    console.log("Filtered products:", filteredProducts);
     return res.json(filteredProducts);
   } catch (err) {
     console.error("Error fetching product details:", err.message);
     return res.status(500).json({ message: "Error inside server", err });
   }
 };
+
 
 // Get all products by brand name and product type
 const getProductforMangerinventory = async (req, res) => {
