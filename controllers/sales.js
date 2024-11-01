@@ -58,14 +58,11 @@ const makesale = async (req, res) => {
       user,
       customer_details,
     } = req.body;
-    let productprice;
+
     // Step 1: Validate customer details (check phone number)
     const customerPhoneNumber = customer_details.customer_phone_number;
-    console.log(customerPhoneNumber);
     if (!customerPhoneNumber) {
-      return res
-        .status(400)
-        .json({ message: "Customer phone number is required." });
+      return res.status(400).json({ message: "Customer phone number is required." });
     }
 
     // Check if customer already exists by phone number
@@ -86,21 +83,16 @@ const makesale = async (req, res) => {
         customerPhoneNumber,
         customer_details.customer_address,
       ]);
-      customer_id = result[0].insertId; // Use the new customer ID from the inserted record
-      console.log(customer_id);
+      customer_id = result[0].insertId;
     } else {
       customer_id = customer[0].customer_id;
-      console.log(`Customer ID: ${customer_id}`);
     }
 
     // Step 2: Retrieve store_name based on user (user_id)
     const store_name = await getStoreNameByUser(user);
     if (!store_name) {
-      return res
-        .status(400)
-        .json({ message: "Store not found for the given user." });
+      return res.status(400).json({ message: "Store not found for the given user." });
     }
-    console.log(`Store name for user ${user}: ${store_name}`);
 
     // Step 3: Check stock availability for all products
     for (const product of products) {
@@ -111,21 +103,15 @@ const makesale = async (req, res) => {
         [store_name, product_id]
       );
 
-      if (
-        stockResult.length === 0 ||
-        stockResult[0].stock_quantity < quantity
-      ) {
-        return res
-          .status(400)
-          .json({
-            message: `Insufficient stock for product ID: ${product_id}. Sale not allowed.`,
-          });
+      if (stockResult.length === 0 || stockResult[0].stock_quantity < quantity) {
+        return res.status(400).json({
+          message: `Insufficient stock for product ID: ${product_id}. Sale not allowed.`,
+        });
       }
     }
 
     // Step 4: Generate the sales_id based on store_name
-    const sales_id = await generateNextId(store_name); // Pass store_name to generate ID
-
+    const sales_id = await generateNextId(store_name);
     if (!sales_id) {
       return res.status(500).json({ message: "Failed to generate sales ID." });
     }
@@ -142,7 +128,6 @@ const makesale = async (req, res) => {
       total_amount,
       customer_id,
     ]);
-    console.log(`Sales ID: ${sales_id}`);
 
     // Step 6: Insert into sales_items and update product and stock
     const salesItemQuery = `
@@ -169,7 +154,7 @@ const makesale = async (req, res) => {
         "SELECT warranty_period FROM products WHERE product_id = ?",
         [product_id]
       );
-      const warranty_period = productDetails[0]?.warranty_period; // Get warranty period
+      const warranty_period = productDetails[0]?.warranty_period;
 
       // Check product type (e.g., mobile phones)
       const [productTypeResult] = await db.query(
@@ -184,15 +169,12 @@ const makesale = async (req, res) => {
           "SELECT imei_number FROM products WHERE product_id = ?",
           [product_id]
         );
-        const currentImeiNumbers =
-          currentImeiResult[0]?.imei_number.split(",") || [];
+        const currentImeiNumbers = currentImeiResult[0]?.imei_number.split(",") || [];
 
         if (!currentImeiNumbers.includes(serial_number)) {
-          return res
-            .status(400)
-            .json({
-              message: `Invalid IMEI number for product ${product_id}. Sale not allowed.`,
-            });
+          return res.status(400).json({
+            message: `Invalid IMEI number for product ${product_id}. Sale not allowed.`,
+          });
         }
 
         const updatedImeiNumbers = currentImeiNumbers
@@ -206,17 +188,14 @@ const makesale = async (req, res) => {
         );
 
         if (productStockUpdated.affectedRows === 0) {
-          throw new Error(
-            `Insufficient product stock for product ${product_id}.`
-          );
+          throw new Error(`Insufficient product stock for product ${product_id}.`);
         }
 
         const [currentStockImeiResult] = await db.query(
           "SELECT imei_numbers FROM stock WHERE store_name = ? AND product_id = ?",
           [store_name, product_id]
         );
-        const currentStockImeiNumbers =
-          currentStockImeiResult[0]?.imei_numbers.split(",") || [];
+        const currentStockImeiNumbers = currentStockImeiResult[0]?.imei_numbers.split(",") || [];
 
         const updatedStockImeiNumbers = currentStockImeiNumbers
           .filter((imei) => imei !== serial_number)
@@ -231,61 +210,31 @@ const makesale = async (req, res) => {
         ]);
 
         if (stockUpdated.affectedRows === 0) {
-          throw new Error(
-            `Failed to update stock for product ${product_id} in store ${store_name}.`
-          );
-        }
-      } else {
-        productprice = price - discount;
-        // Handle non-mobile products
-        await db.query(salesItemQuery, [
-          sales_id,
-          product_id,
-          quantity,
-          productprice,
-          serial_number,
-          discount,
-          warranty_period,
-        ]);
-
-        const [productStockUpdated] = await db.query(
-          updateProductStockAndImeiQuery,
-          [quantity, null, product_id, quantity]
-        );
-
-        if (productStockUpdated.affectedRows === 0) {
-          throw new Error(
-            `Insufficient product stock for product ${product_id}.`
-          );
-        }
-
-        const [stockUpdated] = await db.query(updateStockQuery, [
-          quantity,
-          null,
-          store_name,
-          product_id,
-          quantity,
-        ]);
-
-        if (stockUpdated.affectedRows === 0) {
-          throw new Error(
-            `Failed to update stock for product ${product_id} in store ${store_name}.`
-          );
+          throw new Error(`Failed to update stock for product ${product_id} in store ${store_name}.`);
         }
       }
+
+      // Insert all product details into the sales_items table
+      productprice = price - discount;
+      await db.query(salesItemQuery, [
+        sales_id,
+        product_id,
+        quantity,
+        productprice,
+        serial_number, // Include IMEI number here for mobile phones
+        discount,
+        warranty_period,
+      ]);
     }
 
     // If all inserts and updates are successful, return the response
-    return res
-      .status(200)
-      .json({ message: "Sales and items added successfully.", sales_id });
+    return res.status(200).json({ message: "Sales and items added successfully.", sales_id });
   } catch (err) {
     console.error("Error processing sales and items:", err.message);
-    return res
-      .status(500)
-      .json({ message: "Error inside server during sales processing.", err });
+    return res.status(500).json({ message: "Error inside server during sales processing.", err });
   }
 };
+
 
 const getsales = async (req, res) => {
   console.log("Request body", req.body);
