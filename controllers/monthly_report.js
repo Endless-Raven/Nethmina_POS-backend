@@ -5,7 +5,7 @@ const cron = require("node-cron");
 // Fetch Monthly Report
 const getMonthlyReport = async (req, res) => {
     const { month, year } = req.query;
-    
+
     const yearInt = parseInt(year);
     const monthInt = parseInt(month);
 
@@ -16,13 +16,12 @@ const getMonthlyReport = async (req, res) => {
     try {
         console.log(`Fetching monthly report for: month = ${monthInt}, year = ${yearInt}`);
 
-        // SQL query to get daily income and expenses for each store
-        const sql = `
+        // Separate queries for income and expense
+        const incomeSql = `
             SELECT 
                 stores.store_name,
                 DATE(income.created_at) AS date,
-                COALESCE(SUM(income.income_amount), 0) AS total_income,
-                COALESCE(SUM(expense.expense_amount), 0) AS total_expense
+                COALESCE(SUM(income.income_amount), 0) AS total_income
             FROM 
                 stores
             LEFT JOIN 
@@ -30,35 +29,72 @@ const getMonthlyReport = async (req, res) => {
                 AND MONTH(income.created_at) = ? 
                 AND YEAR(income.created_at) = ?
                 AND income.approval_status = 'confirmed'
-            LEFT JOIN 
-                expense ON stores.store_id = expense.store_id 
-                AND MONTH(expense.created_at) = ? 
-                AND YEAR(expense.created_at) = ?
-                AND expense.approval_status = 'confirmed'
             GROUP BY 
                 stores.store_name, DATE(income.created_at)
             ORDER BY 
                 stores.store_name, date;
         `;
 
-        const [report] = await db.query(sql, [monthInt, yearInt, monthInt, yearInt]);
+        const expenseSql = `
+            SELECT 
+                stores.store_name,
+                DATE(expense.created_at) AS date,
+                COALESCE(SUM(expense.expense_amount), 0) AS total_expense
+            FROM 
+                stores
+            LEFT JOIN 
+                expense ON stores.store_id = expense.store_id 
+                AND MONTH(expense.created_at) = ? 
+                AND YEAR(expense.created_at) = ?
+                AND expense.approval_status = 'confirmed'
+            GROUP BY 
+                stores.store_name, DATE(expense.created_at)
+            ORDER BY 
+                stores.store_name, date;
+        `;
 
-        if (!report || report.length === 0) {
-            return res.status(404).json({ message: "No report found for the specified month and year." });
-        }
+        const [incomeReport] = await db.query(incomeSql, [monthInt, yearInt]);
+        const [expenseReport] = await db.query(expenseSql, [monthInt, yearInt]);
 
-        // Organize report data by store and date
-        const formattedReport = report.reduce((acc, item) => {
-            let storeEntry = acc.find(s => s.store === item.store_name);
+        // Combine income and expense data
+        const reportMap = {};
+
+        incomeReport.forEach(item => {
+            const key = `${item.store_name}-${item.date}`;
+            reportMap[key] = {
+                store: item.store_name,
+                date: item.date,
+                income: parseFloat(item.total_income),
+                expense: 0 // Initialize with 0, updated later if needed
+            };
+        });
+
+        expenseReport.forEach(item => {
+            const key = `${item.store_name}-${item.date}`;
+            if (reportMap[key]) {
+                reportMap[key].expense = parseFloat(item.total_expense);
+            } else {
+                reportMap[key] = {
+                    store: item.store_name,
+                    date: item.date,
+                    income: 0, // Initialize with 0, updated later if needed
+                    expense: parseFloat(item.total_expense)
+                };
+            }
+        });
+
+        // Transform map to array
+        const formattedReport = Object.values(reportMap).reduce((acc, item) => {
+            let storeEntry = acc.find(s => s.store === item.store);
             if (!storeEntry) {
-                storeEntry = { store: item.store_name, sales: [] };
+                storeEntry = { store: item.store, sales: [] };
                 acc.push(storeEntry);
             }
 
             storeEntry.sales.push({
                 date: `${yearInt}/${monthInt}/${new Date(item.date).getDate()}`,
-                income: parseFloat(item.total_income),
-                expence: parseFloat(item.total_expense)
+                income: item.income,
+                expence: item.expense
             });
 
             return acc;
@@ -69,7 +105,6 @@ const getMonthlyReport = async (req, res) => {
             sum + store.sales.reduce((s, sale) => s + sale.income, 0), 0);
         const totalExpense = formattedReport.reduce((sum, store) =>
             sum + store.sales.reduce((s, sale) => s + sale.expence, 0), 0);
-
         const summary = {
             total_income: totalIncome,
             total_expence: totalExpense,
@@ -77,13 +112,14 @@ const getMonthlyReport = async (req, res) => {
             difference: totalIncome - totalExpense,
             report: formattedReport
         };
-
+console.log(totalExpense);
         return res.json(summary);
     } catch (err) {
         console.error("Error fetching monthly report:", err.message);
         return res.status(500).json({ message: "Error fetching monthly report", err });
     }
 };
+
 
 // Fetch Daily Report
 const getDailyReport = async (req, res) => {
@@ -206,7 +242,7 @@ const updateMonthlyReport = async () => {
 
         const totalIncome = incomeResult[0].total_income || 0;
         const totalExpense = expenseResult[0].total_expense || 0;
-        const isProfit = totalIncome > totalExpense;
+        const isProfit = totalIncome < totalExpense;
         const profitLossStatus = isProfit ? "profit" : "loss";
 
         // Insert or update monthly report
@@ -235,7 +271,7 @@ const updateMonthlyReport = async () => {
 };
 
 // Schedule to run on the first day of every month at midnight
-cron.schedule("0 0 1 * *", () => {
+cron.schedule("27 11 * * *", () => {
     updateMonthlyReport();
 });
 module.exports = {
