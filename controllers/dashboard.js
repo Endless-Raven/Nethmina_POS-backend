@@ -12,9 +12,9 @@ const getDashboardData = async (req, res) => {
 
     // Daily sales query (for today's sales)
     const [dailySalesData] = await db.query(`
-        SELECT SUM(total_amount) AS daily_sales
-        FROM sales
-        WHERE sale_date = CURRENT_DATE();
+      SELECT SUM(total_amount) AS daily_sales
+FROM sales
+WHERE DATE(sale_date) = CURRENT_DATE();
       `);
 
     // Fetching top 5 products by sales
