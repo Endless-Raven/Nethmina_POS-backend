@@ -35,6 +35,9 @@ router.put("/:product_name",updateitem ); //update item details
 router.delete("/:product_name",deleteitem); //delete item
 
 router.get("/getProductTypes/get",getProductTypes); //get product type list for POS
+
+
+
 router.get("/brands/byproducttype",getBrandsByProductType); //get brand list for POS
 router.get("/models/bybrand",getProductModelsByBrandName); //get models list for POS
 
