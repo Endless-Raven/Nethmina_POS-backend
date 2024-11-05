@@ -17,7 +17,9 @@ const { additem ,
       getProductDetails,
       getitembycode,
       getitembyname,
-      getProductforMangerinventory
+      getProductforMangerinventory,
+      getProductcolor,
+      getImeiNumbers
     } = require("../controllers/product");
 
 
@@ -35,7 +37,7 @@ router.put("/:product_name",updateitem ); //update item details
 router.delete("/:product_name",deleteitem); //delete item
 
 router.get("/getProductTypes/get",getProductTypes); //get product type list for POS
-
+router.get("/getProductColor/get",getProductcolor); //get product color list for POS
 
 
 router.get("/brands/byproducttype",getBrandsByProductType); //get brand list for POS
@@ -46,6 +48,7 @@ router.get("/inventory/stock",getProductforMangerinventory); //get products for 
 
 router.post("/getFiltered/ProductDetails",getFilteredProductDetails); //get products filterd for inventory
 
+router.post("/Imeinumber/list",getImeiNumbers); //get products filterd for inventory
 
 
 router.get("/searchProductsBy/Name",searchProductsByName); //get products name for search bar
