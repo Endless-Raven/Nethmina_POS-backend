@@ -4,7 +4,7 @@ const db = require("../config/db");
 const transferStock = async (req, res) => {
   console.log("Request body", req.body);
 
-  const { products, from: main_branch, to: target_branch } = req.body;
+  const { products, from: main_branch, to: target_branch, user:user } = req.body;
 
   if (!products || !main_branch || !target_branch) {
     return res
@@ -223,8 +223,9 @@ const transferStock = async (req, res) => {
           transfer_approval,
           product_id,
           imei_number,
-          transfer_quantity
-        ) VALUES (?, ?, ?, ?, ?, ?);
+          transfer_quantity,
+          user_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?);
       `;
         const transferParams = [
           main_branch,
@@ -235,6 +236,7 @@ const transferStock = async (req, res) => {
             ? product.imei_number.join(",")
             : null,
           transfer_quantity,
+          user
         ];
         await connection.query(insertTransferQuery, transferParams);
       }
@@ -1129,9 +1131,51 @@ const markRequestAsRead = async (req, res) => {
   }
 };
 
+
+const getProductDetailsByIMEIOrCode = async (req, res) => {
+  const { product_code } = req.body;
+
+  try {
+    let productQuery = "";
+    let queryParams = product_code;
+
+    // Run the first query based on product code
+    productQuery = `
+      SELECT * FROM products
+      WHERE product_code = ?;
+    `;
+
+    let [productRows] = await db.query(productQuery, [queryParams]);
+
+    // If no data is found with product code, try the IMEI number query
+    if (productRows.length === 0) {
+      productQuery = `
+        SELECT * FROM products
+        WHERE FIND_IN_SET(?, imei_number) > 0;
+      `;
+      [productRows] = await db.query(productQuery, [queryParams]);
+    }
+
+    if (productRows.length === 0) {
+      return res.status(404).json({ message: "Product not found." });
+    }
+
+    // Return product details
+    return res.status(200).json(productRows[0]);
+  } catch (err) {
+    console.error("Error fetching product details:", err.message);
+    return res.status(500).json({
+      message: "Error inside server during fetching product details.",
+      err,
+    });
+  }
+};
+
+
+
 module.exports = {
   getStockByProductAndStore,
-
+  getProductDetailsByIMEIOrCode,
   getStoresAndCategories,
   getBrandsByCategory,
   getProductsByCategoryAndBrand,
