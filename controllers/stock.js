@@ -4,7 +4,7 @@ const db = require("../config/db");
 const transferStock = async (req, res) => {
   console.log("Request body", req.body);
 
-  const { products, from: main_branch, to: target_branch, user:user } = req.body;
+  const { products, from: main_branch, to: target_branch, user } = req.body;
 
   if (!products || !main_branch || !target_branch) {
     return res
@@ -40,24 +40,22 @@ const transferStock = async (req, res) => {
       }
       const { product_type, imei_number } = productRows[0];
 
-      // Handle other branches (e.g., for mobile phones and non-mobile products) as previously coded
-      // Check IMEI availability and reduce stock in the main branch, log transfer, etc.
+      // Ensure imei_number is always an array
+      let imei_number_list = Array.isArray(product.imei_number)
+        ? product.imei_number.filter((num) => num.trim() !== "")
+        : product.imei_number
+        ? [product.imei_number.trim()]
+        : [];
 
-      // Existing logic for IMEI checks and quantity reductions for regular stock transfer
+      if (imei_number_list.length !== transfer_quantity) {
+        await connection.rollback();
+        return res.status(400).json({
+          message: "Provided IMEI numbers count does not match the transfer quantity.",
+        });
+      }
+
+      // Handle mobile phone stock transfer
       if (product_type === "Mobile Phone") {
-        const imei_number_list = product.imei_number.filter(
-          (num) => num.trim() !== ""
-        );
-        if (imei_number_list.length !== transfer_quantity) {
-          await connection.rollback();
-          return res
-            .status(400)
-            .json({
-              message:
-                "Provided IMEI numbers count does not match the transfer quantity.",
-            });
-        }
-
         // Check and update stock in the main branch
         const checkImeiQuery = `
             SELECT imei_numbers FROM stock
@@ -87,7 +85,7 @@ const transferStock = async (req, res) => {
         const reduceMainStockQuery = `
             UPDATE stock
             SET stock_quantity = stock_quantity - ?, updated_at = NOW(),
-                imei_numbers = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', imei_numbers, ','), CONCAT(',', ?, ','), ','))
+                imei_numbers = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', imei_numbers, ','), CONCAT(',', ?, ','), ',')) 
             WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
           `;
         const reduceParams = [
@@ -140,7 +138,6 @@ const transferStock = async (req, res) => {
         }
       }
 
-      
       // If target branch is 'repair', handle stock accordingly
       if (target_branch === "repair") {
         // Check if the product already exists in the repair stock
@@ -152,7 +149,7 @@ const transferStock = async (req, res) => {
           product_id,
           target_branch,
         ]);
-      
+
         if (stockRows.length > 0) {
           // Product exists, update stock quantity and append IMEI numbers if applicable
           const imeiString = product.imei_number
@@ -184,24 +181,24 @@ const transferStock = async (req, res) => {
             product.imei_number ? product.imei_number.join(",") : null,
           ]);
         }
-      
+
         // Reduce product quantity in the products table
         const reduceProductStockQuery = `
-          UPDATE products 
-          SET product_stock = product_stock - ?, updated_at = NOW()
-          WHERE product_id = ? AND product_stock >= ?;
-        `;
+            UPDATE products 
+            SET product_stock = product_stock - ?, updated_at = NOW()
+            WHERE product_id = ? AND product_stock >= ?;
+          `;
         const [productStockUpdateResult] = await connection.query(reduceProductStockQuery, [
           transfer_quantity,
           product_id,
           transfer_quantity,
         ]);
-      
+
         if (productStockUpdateResult.affectedRows === 0) {
           await connection.rollback();
           return res.status(400).json({ message: "Insufficient product stock in the products table." });
         }
-      
+
         // Remove IMEI numbers from the products table if applicable
         if (product.imei_number && product.imei_number.length > 0) {
           const imeiToRemove = product.imei_number.join(",");
@@ -213,8 +210,7 @@ const transferStock = async (req, res) => {
           `;
           await connection.query(updateProductImeiQuery, [imeiToRemove, product_id]);
         }
-      }
-       else {
+      } else {
         // Log transfer
         const insertTransferQuery = `
         INSERT INTO transfer (
@@ -255,6 +251,7 @@ const transferStock = async (req, res) => {
     connection.release();
   }
 };
+
 
 //stock by product and store(get)
 const getStockByProductAndStore = async (req, res) => {
