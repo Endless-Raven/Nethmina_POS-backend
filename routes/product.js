@@ -33,7 +33,7 @@ router.get("/:product_name",getitembyid );// get item by id
 router.get("/productCode/:product_code",getitembycode );// get item by code
 router.get("/productName/:product_name",getitembyname );// get item by name
 
-router.put("/:product_name",updateitem ); //update item details 
+router.put("/:product_id",updateitem ); //update item details 
 router.delete("/:product_name",deleteitem); //delete item
 
 router.get("/getProductTypes/get",getProductTypes); //get product type list for POS

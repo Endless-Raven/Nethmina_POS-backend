@@ -25,9 +25,7 @@ const additem = async (req, res) => {
     const [product] = await db.query(checkProductQuery, [req.body.product_name]);
     const newImeiNumbers = req.body.imei_numbers; // Assuming imei_numbers is an array in req.body
 
-    if (product.length > 0) {
-      // Existing product logic here (unchanged)
-    } else {
+   
       const insertProductQuery = `
         INSERT INTO products (product_name, product_code, product_price, warranty_period, imei_number, product_stock, product_type, product_model, brand_name, product_wholesale_price, max_discount, color, capacity, low_count, grade)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -67,7 +65,7 @@ const additem = async (req, res) => {
       return res.status(200).json({
         message: "New product added successfully and stock updated for the store.",
       });
-    }
+    
   } catch (err) {
     console.error("Error adding Product:", err.message);
     return res.status(500).json({ message: "Error inside server.", err });
@@ -568,11 +566,12 @@ const updateitem = async (req, res) => {
         max_discount = ?, 
         color = ?, 
         grade = ?, 
-        capacity = ?
-    WHERE product_name = ?
+        capacity = ?,
+        low_count=?
+    WHERE product_id = ?
   `;
 
-  const product_name = req.params.product_name; 
+  const product_id = req.params.product_id; 
 
   const values = [
     req.body.product_name,
@@ -585,7 +584,8 @@ const updateitem = async (req, res) => {
     req.body.color,    // new column
     req.body.grade,    // new column
     req.body.capacity, // new column
-    product_name
+    req.body.low_count,
+    product_id
   ];
 
   try {

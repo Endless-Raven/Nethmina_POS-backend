@@ -13,6 +13,7 @@ const {
      getAllTransfers,
      getAllPendingRequests,
      markRequestAsRead,
+     getProductDetailsByIMEIOrCode,
      markTransferAsRead} = require("../controllers/stock");
 
 const router = express.Router();
@@ -33,6 +34,10 @@ router.get("/getProductRequests", getProductRequests);     //get product request
 router.delete("/deleteRequest", deleteRequest);             //delete reqest
 router.get("/getallTransfers", getAllTransfers);            //get all transfer details
 router.put("/markTransferAsRead", markTransferAsRead);      //mark as read transfer request
+
+
+
+router.post('/details/byimie', getProductDetailsByIMEIOrCode);
 
 // router.get("/:store_name",getstorebyname);
 // router.put("/:store_name",updatestorebyname);
