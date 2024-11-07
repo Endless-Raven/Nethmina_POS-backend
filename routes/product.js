@@ -29,7 +29,7 @@ const router = express.Router();
 router.post("/",additem ); //add item
 router.get("/", getitems );//get items
 
-router.get("/:product_name",getitembyid );// get item by id
+router.get("/:product_id",getitembyid );// get item by id
 router.get("/productCode/:product_code",getitembycode );// get item by code
 router.get("/productName/:product_name",getitembyname );// get item by name
 
@@ -58,7 +58,7 @@ router.get("/searchProductsBy/Model",searchProductsByModel); //get products Mode
 
 
 
-router.put("/updateStockAndIMEI/:product_name",updateStockAndIMEI ); //update item StockAndIMEI 
+router.put("/updateStockAndIMEI/:product_id",updateStockAndIMEI ); //update item StockAndIMEI 
 
 router.get("/track/ProductDetails",getProductDetails ); //update item StockAndIMEI 
 
