@@ -1133,7 +1133,7 @@ const getProductDetailsByIMEIOrCode = async (req, res) => {
   const { product_code } = req.body;
 
   try {
-    let productQuery = "";
+    let productQuery = "" ;
     let queryParams = product_code;
 
     // Run the first query based on product code
