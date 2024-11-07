@@ -458,17 +458,17 @@ const getitems = async (req,res)=>{
 
 //get item
 const getitembyid = async (req,res) =>{
-    const product_name = req.params.product_name; 
+    const product_id = req.params.product_id; 
 
     const sql = `
         SELECT *
         FROM products
-        WHERE product_name = ?`;
+        WHERE product_id = ?`;
     
         try {
-            console.log("Fetching product by ID:", product_name);
+            console.log("Fetching product by ID:", product_id);
             
-            const [rows] = await db.query(sql, [product_name]); // Pass the product ID as a parameter to the query
+            const [rows] = await db.query(sql, [product_id]); // Pass the product ID as a parameter to the query
         
             if (rows.length === 0) {
               return res.status(404).json({ message: "Product not found." }); // Handle case where no product is found
@@ -608,7 +608,7 @@ const deleteitem = async (req, res) => {
   // SQL queries
   const getProductIdQuery = "SELECT product_id FROM products WHERE product_name = ?;";
   const deleteStockQuery = "DELETE FROM stock WHERE product_id = ?;";
-  const deleteProductQuery = "DELETE FROM products WHERE product_name = ?;";
+  const deleteProductQuery = "DELETE FROM products WHERE product_id = ?;";
 
   const connection = await db.getConnection();
   await connection.beginTransaction();
@@ -629,7 +629,7 @@ const deleteitem = async (req, res) => {
     const [stockResult] = await connection.query(deleteStockQuery, [product_id]);
 
     // Delete the product itself from the products table
-    const [productResult] = await connection.query(deleteProductQuery, [product_name]);
+    const [productResult] = await connection.query(deleteProductQuery, [product_id]);
 
     // Commit transaction if both deletions succeed
     await connection.commit();
@@ -659,13 +659,13 @@ const updateStockAndIMEI = async (req, res) => {
   const sqlSelectProduct = `
     SELECT product_stock, imei_number, product_id
     FROM products 
-    WHERE product_name = ?
+    WHERE product_id = ?
   `;
 
   const sqlUpdateProduct = `
     UPDATE products 
     SET product_stock = ?, imei_number = ?
-    WHERE product_name = ?
+    WHERE product_id = ?
   `;
 
   // SQL queries for fetching and updating the stock in `stock` table
@@ -681,7 +681,7 @@ const updateStockAndIMEI = async (req, res) => {
     WHERE product_id = ? AND store_name = ?
   `;
 
-  const { product_name } = req.params; // Extract product_name from the request URL
+  const { product_id } = req.params; // Extract product_name from the request URL
   const { product_stock, imei_number, user, category } = req.body; // Extract new stock and IMEI numbers
   const getStoreNameQuery = `SELECT s.store_name FROM users u JOIN stores s ON u.store_id = s.store_id WHERE u.user_id = ?`;
 
@@ -694,7 +694,7 @@ const updateStockAndIMEI = async (req, res) => {
     const storeName = store[0].store_name;
 
     // Step 2: Fetch existing stock and IMEI numbers from products table
-    const [product] = await db.query(sqlSelectProduct, [product_name]);
+    const [product] = await db.query(sqlSelectProduct, [product_id]);
     if (product.length === 0) {
       return res.status(404).json({ message: "Product not found." });
     }
@@ -719,7 +719,7 @@ const updateStockAndIMEI = async (req, res) => {
 
     // Step 4: Update stock in products table by adding new quantity
     const updatedStock = currentStock + Number(product_stock);
-    await db.query(sqlUpdateProduct, [updatedStock, updatedIMEINumbers, product_name]);
+    await db.query(sqlUpdateProduct, [updatedStock, updatedIMEINumbers, product_id]);
 
     // Step 5: Fetch current stock data for the store from stock table
     const [stock] = await db.query(sqlSelectStock, [productId, storeName]);
@@ -733,7 +733,6 @@ const updateStockAndIMEI = async (req, res) => {
       const updatedIMEINumbersInStore = category === 'Mobile Phone'
         ? [...existingIMEINumbersInStock, ...newIMEINumbers].join(",") 
         : existingIMEINumbersInStock.join(",");
-
       await db.query(sqlUpdateStock, [
         updatedStockQuantityInStore,
         updatedIMEINumbersInStore,
