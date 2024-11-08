@@ -7,11 +7,9 @@ const transferStock = async (req, res) => {
   const { products, from: main_branch, to: target_branch, user } = req.body;
 
   if (!products || !main_branch || !target_branch) {
-    return res
-      .status(400)
-      .json({
-        message: "Invalid request body. Please include products, from, and to.",
-      });
+    return res.status(400).json({
+      message: "Invalid request body. Please include products, from, and to.",
+    });
   }
 
   const connection = await db.getConnection();
@@ -50,7 +48,8 @@ const transferStock = async (req, res) => {
       if (imei_number_list.length !== transfer_quantity) {
         await connection.rollback();
         return res.status(400).json({
-          message: "Provided IMEI numbers count does not match the transfer quantity.",
+          message:
+            "Provided IMEI numbers count does not match the transfer quantity.",
         });
       }
 
@@ -74,11 +73,9 @@ const transferStock = async (req, res) => {
           )
         ) {
           await connection.rollback();
-          return res
-            .status(400)
-            .json({
-              message: "IMEI numbers not available in the main branch stock.",
-            });
+          return res.status(400).json({
+            message: "IMEI numbers not available in the main branch stock.",
+          });
         }
 
         // Reduce stock for mobile phones in the main branch
@@ -102,12 +99,10 @@ const transferStock = async (req, res) => {
 
         if (mainStockUpdated.affectedRows === 0) {
           await connection.rollback();
-          return res
-            .status(400)
-            .json({
-              message:
-                "Insufficient stock in the main branch or product not found.",
-            });
+          return res.status(400).json({
+            message:
+              "Insufficient stock in the main branch or product not found.",
+          });
         }
       } else {
         // Reduce stock for non-mobile phone products
@@ -129,12 +124,10 @@ const transferStock = async (req, res) => {
 
         if (mainStockUpdated.affectedRows === 0) {
           await connection.rollback();
-          return res
-            .status(400)
-            .json({
-              message:
-                "Insufficient stock in the main branch or product not found.",
-            });
+          return res.status(400).json({
+            message:
+              "Insufficient stock in the main branch or product not found.",
+          });
         }
       }
 
@@ -188,15 +181,18 @@ const transferStock = async (req, res) => {
             SET product_stock = product_stock - ?, updated_at = NOW()
             WHERE product_id = ? AND product_stock >= ?;
           `;
-        const [productStockUpdateResult] = await connection.query(reduceProductStockQuery, [
-          transfer_quantity,
-          product_id,
-          transfer_quantity,
-        ]);
+        const [productStockUpdateResult] = await connection.query(
+          reduceProductStockQuery,
+          [transfer_quantity, product_id, transfer_quantity]
+        );
 
         if (productStockUpdateResult.affectedRows === 0) {
           await connection.rollback();
-          return res.status(400).json({ message: "Insufficient product stock in the products table." });
+          return res
+            .status(400)
+            .json({
+              message: "Insufficient product stock in the products table.",
+            });
         }
 
         // Remove IMEI numbers from the products table if applicable
@@ -208,7 +204,10 @@ const transferStock = async (req, res) => {
                 updated_at = NOW()
             WHERE product_id = ?;
           `;
-          await connection.query(updateProductImeiQuery, [imeiToRemove, product_id]);
+          await connection.query(updateProductImeiQuery, [
+            imeiToRemove,
+            product_id,
+          ]);
         }
       } else {
         // Log transfer
@@ -232,7 +231,7 @@ const transferStock = async (req, res) => {
             ? product.imei_number.join(",")
             : null,
           transfer_quantity,
-          user
+          user,
         ];
         await connection.query(insertTransferQuery, transferParams);
       }
@@ -251,7 +250,6 @@ const transferStock = async (req, res) => {
     connection.release();
   }
 };
-
 
 //stock by product and store(get)
 const getStockByProductAndStore = async (req, res) => {
@@ -283,23 +281,19 @@ const getStockByProductAndStore = async (req, res) => {
     ]);
 
     if (stockRows.length === 0) {
-      return res
-        .status(404)
-        .json({
-          message: "No stock found for this product in the specified store.",
-        });
+      return res.status(404).json({
+        message: "No stock found for this product in the specified store.",
+      });
     }
 
     // Return the stock details
     return res.status(200).json(stockRows[0]);
   } catch (err) {
     console.error("Error fetching stock details:", err.message);
-    return res
-      .status(500)
-      .json({
-        message: "Error inside server during fetching stock details.",
-        err,
-      });
+    return res.status(500).json({
+      message: "Error inside server during fetching stock details.",
+      err,
+    });
   }
 };
 
@@ -588,11 +582,9 @@ const requestProduct = async (req, res) => {
     products.length === 0 ||
     !store_id
   ) {
-    return res
-      .status(400)
-      .json({
-        message: "Invalid request body. Please include products and store_id.",
-      });
+    return res.status(400).json({
+      message: "Invalid request body. Please include products and store_id.",
+    });
   }
 
   const connection = await db.getConnection(); // Get a connection from the pool
@@ -879,24 +871,35 @@ const markTransferAsRead = async (req, res) => {
 
     // Check if the product already exists in the target branch stock
     const checkStockQuery = `
-      SELECT * FROM stock 
-      WHERE product_id = ? AND store_name = ?;
-    `;
+SELECT imei_numbers FROM stock 
+WHERE product_id = ? AND store_name = ?;
+`;
     const [stockRows] = await connection.query(checkStockQuery, [
       product_id,
       target_branch,
     ]);
 
+    // Format IMEI numbers based on whether it's a single or multiple IMEI numbers
+    let imeiString = "";
+    if (imei_number) {
+      imeiString = Array.isArray(imei_number)
+        ? imei_number.join(",")
+        : imei_number;
+      imeiString =
+        stockRows.length > 0 && stockRows[0].imei_numbers
+          ? `,${imeiString}`
+          : imeiString; // Add comma if existing IMEI numbers present
+    }
+
     if (stockRows.length > 0) {
       // Product exists, update stock quantity and append IMEI numbers
       const updateStockQuery = `
-        UPDATE stock
-        SET stock_quantity = stock_quantity + ?, 
-            imei_numbers = CONCAT(imei_numbers, ?, ','),
-            updated_at = NOW()
-        WHERE product_id = ? AND store_name = ?;
-      `;
-      const imeiString = imei_number ? imei_number + "," : ""; // Format IMEI numbers with comma
+  UPDATE stock
+  SET stock_quantity = stock_quantity + ?, 
+      imei_numbers = CONCAT(imei_numbers, ?),
+      updated_at = NOW()
+  WHERE product_id = ? AND store_name = ?;
+`;
       await connection.query(updateStockQuery, [
         transfer_quantity,
         imeiString,
@@ -906,26 +909,24 @@ const markTransferAsRead = async (req, res) => {
     } else {
       // Product does not exist, insert new stock record
       const insertStockQuery = `
-        INSERT INTO stock (store_name, product_id, stock_quantity, imei_numbers, created_at, updated_at)
-        VALUES (?, ?, ?, ?, NOW(), NOW());
-      `;
+  INSERT INTO stock (store_name, product_id, stock_quantity, imei_numbers, created_at, updated_at)
+  VALUES (?, ?, ?, ?, NOW(), NOW());
+`;
       await connection.query(insertStockQuery, [
         target_branch,
         product_id,
         transfer_quantity,
-        imei_number,
+        imeiString,
       ]);
     }
 
     // Commit the transaction
     await connection.commit();
 
-    return res
-      .status(200)
-      .json({
-        message:
-          "Transfer marked as received and stock updated for the target branch.",
-      });
+    return res.status(200).json({
+      message:
+        "Transfer marked as received and stock updated for the target branch.",
+    });
   } catch (err) {
     // Rollback transaction on error
     await connection.rollback();
@@ -1008,12 +1009,10 @@ const getAllPendingRequests = async (req, res) => {
     return res.status(200).json(result);
   } catch (err) {
     console.error("Error fetching pending requests:", err.message);
-    return res
-      .status(500)
-      .json({
-        message: "Error inside server while fetching pending requests.",
-        err,
-      });
+    return res.status(500).json({
+      message: "Error inside server while fetching pending requests.",
+      err,
+    });
   }
 };
 
@@ -1119,15 +1118,12 @@ const markRequestAsRead = async (req, res) => {
       .json({ message: "Request status updated successfully." });
   } catch (err) {
     console.error("Error marking request as read:", err.message);
-    return res
-      .status(500)
-      .json({
-        message: "Error inside server while updating request status.",
-        err,
-      });
+    return res.status(500).json({
+      message: "Error inside server while updating request status.",
+      err,
+    });
   }
 };
-
 
 const getProductDetailsByIMEIOrCode = async (req, res) => {
   const { product_code } = req.body;
@@ -1167,8 +1163,6 @@ const getProductDetailsByIMEIOrCode = async (req, res) => {
     });
   }
 };
-
-
 
 module.exports = {
   getStockByProductAndStore,
