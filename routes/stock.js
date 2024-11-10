@@ -14,7 +14,8 @@ const {
      getAllPendingRequests,
      markRequestAsRead,
      getProductDetailsByIMEIOrCode,
-     markTransferAsRead} = require("../controllers/stock");
+     markTransferAsRead,
+     deleteProductOrIMEI} = require("../controllers/stock");
 
 const router = express.Router();
 
@@ -35,7 +36,7 @@ router.delete("/deleteRequest", deleteRequest);             //delete reqest
 router.get("/getallTransfers", getAllTransfers);            //get all transfer details
 router.put("/markTransferAsRead", markTransferAsRead);      //mark as read transfer request
 
-
+router.post("/delteproduct",deleteProductOrIMEI);
 
 router.post('/details/byimie', getProductDetailsByIMEIOrCode);
 
