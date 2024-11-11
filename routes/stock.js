@@ -36,7 +36,7 @@ router.delete("/deleteRequest", deleteRequest);             //delete reqest
 router.get("/getallTransfers", getAllTransfers);            //get all transfer details
 router.put("/markTransferAsRead", markTransferAsRead);      //mark as read transfer request
 
-router.post("/delteproduct",deleteProductOrIMEI);
+router.post('/delete/productimei'  ,deleteProductOrIMEI);
 
 router.post('/details/byimie', getProductDetailsByIMEIOrCode);
 

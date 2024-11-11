@@ -38,23 +38,26 @@ const transferStock = async (req, res) => {
       }
       const { product_type, imei_number } = productRows[0];
 
-      // Ensure imei_number is always an array
-      let imei_number_list = Array.isArray(product.imei_number)
-        ? product.imei_number.filter((num) => num.trim() !== "")
-        : product.imei_number
-        ? [product.imei_number.trim()]
-        : [];
-
-      if (imei_number_list.length !== transfer_quantity) {
-        await connection.rollback();
-        return res.status(400).json({
-          message:
-            "Provided IMEI numbers count does not match the transfer quantity.",
-        });
-      }
-
+      
       // Handle mobile phone stock transfer
       if (product_type === "Mobile Phone") {
+
+        // Ensure imei_number is always an array
+      let imei_number_list = Array.isArray(product.imei_number)
+      ? product.imei_number.filter((num) => num.trim() !== "")
+      : product.imei_number
+      ? [product.imei_number.trim()]
+      : [];
+
+    if (imei_number_list.length !== transfer_quantity) {
+      await connection.rollback();
+      return res.status(400).json({
+        message:
+          "Provided IMEI numbers count does not match the transfer quantity.",
+      });
+    }
+
+
         // Check and update stock in the main branch
         const checkImeiQuery = `
             SELECT imei_numbers FROM stock
@@ -1164,6 +1167,98 @@ const getProductDetailsByIMEIOrCode = async (req, res) => {
   }
 };
 
+
+
+const deleteProductOrIMEI = async (req, res) => {
+  const { product_id, store_id, imei_number, quantity } = req.body;
+
+  // If imei_number is a string, split it into an array, otherwise, set it to an empty array.
+  const imeiNumbers = (typeof imei_number === 'string' && imei_number.trim() !== '') ? imei_number.split(',') : [];
+
+  try {
+    const store_name = store_id;
+    console.log("Store Name:", req.body);
+
+    // Get current product type, IMEI numbers, and stock quantity from `products` table
+    const [productRows] = await db.query(`SELECT product_type, imei_number, product_stock FROM products WHERE product_id = ?`, [product_id]);
+    const productRow = productRows[0];
+
+    if (!productRow) {
+      return res.status(404).json({ message: "Product not found." });
+    }
+
+    const { product_type, imei_number: existingIMEI, product_stock } = productRow;
+
+    // If the product type is not "Mobile Phone", delete the product from the store stock.
+    if (product_type !== 'Mobile Phone') {
+      // Delete the product from stock (no need for IMEI management).
+      await db.query(`DELETE FROM stock WHERE product_id = ? AND store_name = ?`, [product_id, store_name]);
+
+      // Update the stock in the products table as well
+      const newProductStock = product_stock - quantity;
+      await db.query(`UPDATE products SET product_stock = ?, updated_at = NOW() WHERE product_id = ?`, [newProductStock, product_id]);
+
+      return res.status(200).json({ message: "Product deleted from stock as it's not a mobile phone." });
+    }
+
+    // Handle Mobile Phone: Get current IMEIs and stock quantity from `stock` table
+    const [stockRows] = await db.query(`SELECT imei_numbers, stock_quantity FROM stock WHERE product_id = ? AND store_name = ?`, [product_id, store_name]);
+    const stockRow = stockRows[0];
+
+    if (!stockRow) {
+      return res.status(404).json({ message: "Product not found in this store." });
+    }
+
+    let newStockQuantity = stockRow.stock_quantity;
+
+    // Handle IMEI number deletion
+    if (imeiNumbers.length > 0) {
+      const currentStockIMEIs = stockRow.imei_numbers ? stockRow.imei_numbers.split(',') : [];
+      const updatedStockIMEIs = currentStockIMEIs.filter(imei => !imeiNumbers.includes(imei));
+      newStockQuantity = stockRow.stock_quantity - imeiNumbers.length;
+
+      // Update the `stock` table with new IMEI list and quantity
+      await db.query(`UPDATE stock SET imei_numbers = ?, stock_quantity = ?, updated_at = NOW() WHERE product_id = ? AND store_name = ?`, [updatedStockIMEIs.join(','), newStockQuantity, product_id, store_name]);
+    } else if (quantity > 0) {
+      // If no IMEI numbers are provided, reduce the stock based on the quantity.
+      newStockQuantity = stockRow.stock_quantity - quantity;
+
+      // Update the `stock` table without affecting IMEIs
+      await db.query(`UPDATE stock SET stock_quantity = ?, updated_at = NOW() WHERE product_id = ? AND store_name = ?`, [newStockQuantity, product_id, store_name]);
+    }
+
+    // Get current IMEIs and stock from `products` table
+    let updatedProductIMEIs = existingIMEI ? existingIMEI.split(',') : [];
+    let newProductStock = product_stock;
+
+    // Handle IMEI number removal from `products` table
+    if (imeiNumbers.length > 0) {
+      updatedProductIMEIs = updatedProductIMEIs.filter(imei => !imeiNumbers.includes(imei));
+      newProductStock = product_stock - imeiNumbers.length;
+
+      // Update the `products` table with new IMEI list and stock
+      await db.query(`UPDATE products SET imei_number = ?, product_stock = ?, updated_at = NOW() WHERE product_id = ?`, [updatedProductIMEIs.join(','), newProductStock, product_id]);
+    } else if (quantity > 0) {
+      // If no IMEI numbers were provided, reduce stock by the given quantity
+      newProductStock = product_stock - quantity;
+
+      // Update the `products` table with updated stock quantity
+      await db.query(`UPDATE products SET product_stock = ?, updated_at = NOW() WHERE product_id = ?`, [newProductStock, product_id]);
+    }
+
+    return res.status(200).json({ message: "Product or IMEI numbers removed successfully and stock updated." });
+
+  } catch (err) {
+    console.error("Error updating/deleting product:", err.message);
+    return res.status(500).json({
+      message: "Error inside server during update/delete.",
+      error: err.message,
+    });
+  }
+};
+
+
+
 module.exports = {
   getStockByProductAndStore,
   getProductDetailsByIMEIOrCode,
@@ -1179,4 +1274,5 @@ module.exports = {
   deleteRequest,
   getAllTransfers,
   markTransferAsRead,
+  deleteProductOrIMEI,
 };
