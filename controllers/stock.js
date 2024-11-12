@@ -1,12 +1,259 @@
 const db = require("../config/db");
 
 //manages stock(post request)
+// const transferStock = async (req, res) => {
+//   console.log("Request body", req.body);
+
+//   const { products, from: main_branch, to: target_branch, user } = req.body;
+
+//   if (!products || !main_branch || !target_branch) {
+//     return res.status(400).json({
+//       message: "Invalid request body. Please include products, from, and to.",
+//     });
+//   }
+
+//   const connection = await db.getConnection();
+//   await connection.beginTransaction();
+
+//   try {
+//     for (let product of products) {
+//       const product_id = parseInt(product.product_id, 10);
+//       const transfer_quantity = parseInt(product.transfer_quantity, 10);
+
+//       // Validate cleaned data
+//       if (!product_id || !transfer_quantity) {
+//         await connection.rollback();
+//         return res
+//           .status(400)
+//           .json({ message: "Product ID or transfer quantity is invalid." });
+//       }
+
+//       // Check product existence and type
+//       const productQuery = `SELECT product_type, imei_number FROM products WHERE product_id = ?;`;
+//       const [productRows] = await connection.query(productQuery, [product_id]);
+
+//       if (!productRows.length) {
+//         await connection.rollback();
+//         return res.status(400).json({ message: "Product not found." });
+//       }
+//       const { product_type, imei_number } = productRows[0];
+
+//       // Handle mobile phone stock transfer
+//       if (product_type === "Mobile Phone") {
+//         // Ensure imei_number is always an array
+//         let imei_number_list = Array.isArray(product.imei_number)
+//           ? product.imei_number.filter((num) => num.trim() !== "")
+//           : product.imei_number
+//           ? [product.imei_number.trim()]
+//           : [];
+
+//         if (imei_number_list.length !== transfer_quantity) {
+//           await connection.rollback();
+//           return res.status(400).json({
+//             message:
+//               "Provided IMEI numbers count does not match the transfer quantity.",
+//           });
+//         }
+
+//         // Check and update stock in the main branch
+//         const checkImeiQuery = `
+//             SELECT imei_numbers FROM stock
+//             WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
+//           `;
+//         const [imeiRows] = await connection.query(checkImeiQuery, [
+//           product_id,
+//           main_branch,
+//           transfer_quantity,
+//         ]);
+
+//         if (
+//           !imeiRows.length ||
+//           !imei_number_list.every((num) =>
+//             imeiRows[0].imei_numbers.split(",").includes(num)
+//           )
+//         ) {
+//           await connection.rollback();
+//           return res.status(400).json({
+//             message: "IMEI numbers not available in the main branch stock.",
+//           });
+//         }
+
+//         // Reduce stock for mobile phones in the main branch
+//         const reduceMainStockQuery = `
+//             UPDATE stock
+//             SET stock_quantity = stock_quantity - ?, updated_at = NOW(),
+//                 imei_numbers = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', imei_numbers, ','), CONCAT(',', ?, ','), ',')) 
+//             WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
+//           `;
+//         const reduceParams = [
+//           transfer_quantity,
+//           imei_number_list.join(","),
+//           product_id,
+//           main_branch,
+//           transfer_quantity,
+//         ];
+//         const [mainStockUpdated] = await connection.query(
+//           reduceMainStockQuery,
+//           reduceParams
+//         );
+
+//         if (mainStockUpdated.affectedRows === 0) {
+//           await connection.rollback();
+//           return res.status(400).json({
+//             message:
+//               "Insufficient stock in the main branch or product not found.",
+//           });
+//         }
+//       } else {
+//         // Reduce stock for non-mobile phone products
+//         const reduceMainStockQuery = `
+//             UPDATE stock
+//             SET stock_quantity = stock_quantity - ?, updated_at = NOW()
+//             WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
+//           `;
+//         const reduceParams = [
+//           transfer_quantity,
+//           product_id,
+//           main_branch,
+//           transfer_quantity,
+//         ];
+//         const [mainStockUpdated] = await connection.query(
+//           reduceMainStockQuery,
+//           reduceParams
+//         );
+
+//         if (mainStockUpdated.affectedRows === 0) {
+//           await connection.rollback();
+//           return res.status(400).json({
+//             message:
+//               "Insufficient stock in the main branch or product not found.",
+//           });
+//         }
+//       }
+
+//       // If target branch is 'repair', handle stock accordingly
+//       if (target_branch === "repair") {
+//         // Check if the product already exists in the repair stock
+//         const checkStockQuery = `
+//           SELECT * FROM stock 
+//           WHERE product_id = ? AND store_name = ?;
+//         `;
+//         const [stockRows] = await connection.query(checkStockQuery, [
+//           product_id,
+//           target_branch,
+//         ]);
+
+//         if (stockRows.length > 0) {
+//           // Product exists, update stock quantity and append IMEI numbers if applicable
+//           const imeiString = product.imei_number
+//             ? product.imei_number.join(",") + ","
+//             : ""; // Format IMEI numbers with comma
+//           const updateStockQuery = `
+//             UPDATE stock
+//             SET stock_quantity = stock_quantity + ?, 
+//                 imei_numbers = CONCAT(imei_numbers, ?),
+//                 updated_at = NOW()
+//             WHERE product_id = ? AND store_name = ?;
+//           `;
+//           await connection.query(updateStockQuery, [
+//             transfer_quantity,
+//             imeiString,
+//             product_id,
+//             target_branch,
+//           ]);
+//         } else {
+//           // Product does not exist, insert new stock record
+//           const insertStockQuery = `
+//             INSERT INTO stock (store_name, product_id, stock_quantity, imei_numbers, created_at, updated_at)
+//             VALUES (?, ?, ?, ?, NOW(), NOW());
+//           `;
+//           await connection.query(insertStockQuery, [
+//             target_branch,
+//             product_id,
+//             transfer_quantity,
+//             product.imei_number ? product.imei_number.join(",") : null,
+//           ]);
+//         }
+
+//         // Reduce product quantity in the products table
+//         const reduceProductStockQuery = `
+//             UPDATE products 
+//             SET product_stock = product_stock - ?, updated_at = NOW()
+//             WHERE product_id = ? AND product_stock >= ?;
+//           `;
+//         const [productStockUpdateResult] = await connection.query(
+//           reduceProductStockQuery,
+//           [transfer_quantity, product_id, transfer_quantity]
+//         );
+
+//         if (productStockUpdateResult.affectedRows === 0) {
+//           await connection.rollback();
+//           return res.status(400).json({
+//             message: "Insufficient product stock in the products table.",
+//           });
+//         }
+
+//         // Remove IMEI numbers from the products table if applicable
+//         if (product.imei_number && product.imei_number.length > 0) {
+//           const imeiToRemove = product.imei_number.join(",");
+//           const updateProductImeiQuery = `
+//             UPDATE products
+//             SET imei_number = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', imei_number, ','), CONCAT(',', ?, ','), ',')),
+//                 updated_at = NOW()
+//             WHERE product_id = ?;
+//           `;
+//           await connection.query(updateProductImeiQuery, [
+//             imeiToRemove,
+//             product_id,
+//           ]);
+//         }
+//       } else {
+//         // Log transfer
+//         const insertTransferQuery = `
+//         INSERT INTO transfer (
+//           transfer_from,
+//           transfer_to,
+//           transfer_approval,
+//           product_id,
+//           imei_number,
+//           transfer_quantity,
+//           user_id
+//         ) VALUES (?, ?, ?, ?, ?, ?, ?);
+//       `;
+//         const transferParams = [
+//           main_branch,
+//           target_branch,
+//           "sending",
+//           product_id,
+//           product_type === "Mobile Phone"
+//             ? product.imei_number.join(",")
+//             : null,
+//           transfer_quantity,
+//           user,
+//         ];
+//         await connection.query(insertTransferQuery, transferParams);
+//       }
+//     }
+
+//     // Commit the transaction
+//     await connection.commit();
+//     return res.status(200).json({ message: "Transfer recorded successfully." });
+//   } catch (err) {
+//     await connection.rollback();
+//     console.error("Error processing stock transfer:", err.message);
+//     return res
+//       .status(500)
+//       .json({ message: "Error inside server during stock transfer.", err });
+//   } finally {
+//     connection.release();
+//   }
+// };
 const transferStock = async (req, res) => {
   console.log("Request body", req.body);
 
-  const { products, from: main_branch, to: target_branch, user } = req.body;
+  const { products, from: main_branch_id, to: target_branch, user } = req.body;
 
-  if (!products || !main_branch || !target_branch) {
+  if (!products || !main_branch_id || !target_branch) {
     return res.status(400).json({
       message: "Invalid request body. Please include products, from, and to.",
     });
@@ -16,11 +263,22 @@ const transferStock = async (req, res) => {
   await connection.beginTransaction();
 
   try {
+    // Retrieve the store name using the store_id for main_branch
+    const [mainBranchRows] = await connection.query(
+      `SELECT store_name FROM stores WHERE store_id = ?`,
+      [main_branch_id]
+    );
+
+    if (!mainBranchRows.length) {
+      await connection.rollback();
+      return res.status(400).json({ message: "Main branch not found." });
+    }
+    const main_branch = mainBranchRows[0].store_name;
+
     for (let product of products) {
       const product_id = parseInt(product.product_id, 10);
       const transfer_quantity = parseInt(product.transfer_quantity, 10);
 
-      // Validate cleaned data
       if (!product_id || !transfer_quantity) {
         await connection.rollback();
         return res
@@ -28,7 +286,6 @@ const transferStock = async (req, res) => {
           .json({ message: "Product ID or transfer quantity is invalid." });
       }
 
-      // Check product existence and type
       const productQuery = `SELECT product_type, imei_number FROM products WHERE product_id = ?;`;
       const [productRows] = await connection.query(productQuery, [product_id]);
 
@@ -38,27 +295,21 @@ const transferStock = async (req, res) => {
       }
       const { product_type, imei_number } = productRows[0];
 
-      
-      // Handle mobile phone stock transfer
       if (product_type === "Mobile Phone") {
+        let imei_number_list = Array.isArray(product.imei_number)
+          ? product.imei_number.filter((num) => num.trim() !== "")
+          : product.imei_number
+          ? [product.imei_number.trim()]
+          : [];
 
-        // Ensure imei_number is always an array
-      let imei_number_list = Array.isArray(product.imei_number)
-      ? product.imei_number.filter((num) => num.trim() !== "")
-      : product.imei_number
-      ? [product.imei_number.trim()]
-      : [];
+        if (imei_number_list.length !== transfer_quantity) {
+          await connection.rollback();
+          return res.status(400).json({
+            message:
+              "Provided IMEI numbers count does not match the transfer quantity.",
+          });
+        }
 
-    if (imei_number_list.length !== transfer_quantity) {
-      await connection.rollback();
-      return res.status(400).json({
-        message:
-          "Provided IMEI numbers count does not match the transfer quantity.",
-      });
-    }
-
-
-        // Check and update stock in the main branch
         const checkImeiQuery = `
             SELECT imei_numbers FROM stock
             WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
@@ -81,7 +332,6 @@ const transferStock = async (req, res) => {
           });
         }
 
-        // Reduce stock for mobile phones in the main branch
         const reduceMainStockQuery = `
             UPDATE stock
             SET stock_quantity = stock_quantity - ?, updated_at = NOW(),
@@ -108,7 +358,6 @@ const transferStock = async (req, res) => {
           });
         }
       } else {
-        // Reduce stock for non-mobile phone products
         const reduceMainStockQuery = `
             UPDATE stock
             SET stock_quantity = stock_quantity - ?, updated_at = NOW()
@@ -134,9 +383,7 @@ const transferStock = async (req, res) => {
         }
       }
 
-      // If target branch is 'repair', handle stock accordingly
       if (target_branch === "repair") {
-        // Check if the product already exists in the repair stock
         const checkStockQuery = `
           SELECT * FROM stock 
           WHERE product_id = ? AND store_name = ?;
@@ -147,10 +394,9 @@ const transferStock = async (req, res) => {
         ]);
 
         if (stockRows.length > 0) {
-          // Product exists, update stock quantity and append IMEI numbers if applicable
           const imeiString = product.imei_number
             ? product.imei_number.join(",") + ","
-            : ""; // Format IMEI numbers with comma
+            : "";
           const updateStockQuery = `
             UPDATE stock
             SET stock_quantity = stock_quantity + ?, 
@@ -165,7 +411,6 @@ const transferStock = async (req, res) => {
             target_branch,
           ]);
         } else {
-          // Product does not exist, insert new stock record
           const insertStockQuery = `
             INSERT INTO stock (store_name, product_id, stock_quantity, imei_numbers, created_at, updated_at)
             VALUES (?, ?, ?, ?, NOW(), NOW());
@@ -178,7 +423,6 @@ const transferStock = async (req, res) => {
           ]);
         }
 
-        // Reduce product quantity in the products table
         const reduceProductStockQuery = `
             UPDATE products 
             SET product_stock = product_stock - ?, updated_at = NOW()
@@ -191,14 +435,11 @@ const transferStock = async (req, res) => {
 
         if (productStockUpdateResult.affectedRows === 0) {
           await connection.rollback();
-          return res
-            .status(400)
-            .json({
-              message: "Insufficient product stock in the products table.",
-            });
+          return res.status(400).json({
+            message: "Insufficient product stock in the products table.",
+          });
         }
 
-        // Remove IMEI numbers from the products table if applicable
         if (product.imei_number && product.imei_number.length > 0) {
           const imeiToRemove = product.imei_number.join(",");
           const updateProductImeiQuery = `
@@ -213,34 +454,55 @@ const transferStock = async (req, res) => {
           ]);
         }
       } else {
-        // Log transfer
-        const insertTransferQuery = `
-        INSERT INTO transfer (
-          transfer_from,
-          transfer_to,
-          transfer_approval,
-          product_id,
-          imei_number,
-          transfer_quantity,
-          user_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?);
-      `;
-        const transferParams = [
-          main_branch,
-          target_branch,
-          "sending",
-          product_id,
-          product_type === "Mobile Phone"
-            ? product.imei_number.join(",")
-            : null,
-          transfer_quantity,
-          user,
-        ];
-        await connection.query(insertTransferQuery, transferParams);
+        // Insert each IMEI number separately into the transfer table
+        if (product_type === "Mobile Phone" && product.imei_number) {
+          for (const imei of product.imei_number) {
+            const insertTransferQuery = `
+              INSERT INTO transfer (
+                transfer_from,
+                transfer_to,
+                transfer_approval,
+                product_id,
+                imei_number,
+                transfer_quantity,
+                user_id
+              ) VALUES (?, ?, ?, ?, ?, ?, ?);
+            `;
+            await connection.query(insertTransferQuery, [
+              main_branch,
+              target_branch,
+              "sending",
+              product_id,
+              imei,
+              1, // Since each row is for a single IMEI, quantity is 1
+              user,
+            ]);
+          }
+        } else {
+          const insertTransferQuery = `
+            INSERT INTO transfer (
+              transfer_from,
+              transfer_to,
+              transfer_approval,
+              product_id,
+              imei_number,
+              transfer_quantity,
+              user_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?);
+          `;
+          await connection.query(insertTransferQuery, [
+            main_branch,
+            target_branch,
+            "sending",
+            product_id,
+            null,
+            transfer_quantity,
+            user,
+          ]);
+        }
       }
     }
 
-    // Commit the transaction
     await connection.commit();
     return res.status(200).json({ message: "Transfer recorded successfully." });
   } catch (err) {
@@ -253,6 +515,9 @@ const transferStock = async (req, res) => {
     connection.release();
   }
 };
+
+
+
 
 //stock by product and store(get)
 const getStockByProductAndStore = async (req, res) => {
@@ -576,14 +841,15 @@ const getProductsByCategoryAndBrand = async (req, res) => {
 
 // Function to handle product requests
 const requestProduct = async (req, res) => {
-  const { products, store_id } = req.body;
+  const { products, store_id, req_from } = req.body;
 
   // Validate the request body
   if (
     !products ||
     !Array.isArray(products) ||
     products.length === 0 ||
-    !store_id
+    !store_id ||
+    !req_from
   ) {
     return res.status(400).json({
       message: "Invalid request body. Please include products and store_id.",
@@ -596,15 +862,20 @@ const requestProduct = async (req, res) => {
   try {
     // Prepare the insert query for the requests
     const insertRequestQuery = `
-      INSERT INTO request (request_time, is_seen, request_quantity, product_id, store_id)
-      VALUES (NOW(), 0, ?, ?, ?);
+      INSERT INTO request (request_time, is_seen, request_quantity, product_id, store_id,req_from)
+      VALUES (NOW(), 0, ?, ?, ?, ?);
     `;
 
     for (const product of products) {
       const { product_id, request_quantity } = product; // Ensure this matches the request body
 
       // Validate product details
-      if (!product_id || !request_quantity || request_quantity <= 0) {
+      if (
+        !product_id ||
+        !request_quantity ||
+        request_quantity <= 0 ||
+        !req_from
+      ) {
         await connection.rollback(); // Rollback transaction on validation failure
         return res.status(400).json({ message: "Invalid product details." });
       }
@@ -614,6 +885,7 @@ const requestProduct = async (req, res) => {
         request_quantity,
         product_id,
         store_id,
+        req_from,
       ]);
     }
 
@@ -649,6 +921,7 @@ const getProductRequests = async (req, res) => {
     const requestQuery = `
       SELECT 
         r.request_id,
+        r.req_from,
         DATE(r.request_time) AS date,
         TIME(r.request_time) AS time,
         r.is_seen,
@@ -677,6 +950,7 @@ const getProductRequests = async (req, res) => {
       if (!groupedRequests[row.request_id]) {
         groupedRequests[row.request_id] = {
           request_id: row.request_id,
+          req_from: row.req_from,
           date: row.date,
           time: row.time,
           is_seen: Boolean(row.is_seen),
@@ -773,7 +1047,8 @@ const getAllTransfers = async (req, res) => {
         p.product_name,
         p.brand_name,
         p.product_type,
-        t.transfer_quantity
+        t.transfer_quantity,
+        t.imei_number
       FROM transfer t
       INNER JOIN products p ON t.product_id = p.product_id
       WHERE t.transfer_to = ?
@@ -804,6 +1079,7 @@ const getAllTransfers = async (req, res) => {
       groupedTransfers[row.transfer_id].products.push({
         product_id: row.product_id,
         product_name: row.product_name,
+        imei_number:row.imei_number,
         brand_name: row.brand_name,
         product_type: row.product_type,
         transfer_quantity: row.transfer_quantity,
@@ -945,6 +1221,98 @@ WHERE product_id = ? AND store_name = ?;
   } finally {
     // Release the connection back to the pool
     connection.release();
+  }
+};
+
+const getAllPendingRequestsbyreqfrom = async (req, res) => {
+  try {
+    
+    const { store_id } = req.body; // Accessing store_id from query parameters
+    console.log(`Store ID received: ${store_id}`); // Log to check the value of store_id
+
+    if (!store_id) {
+      return res.status(400).json({ message: "Store ID is required." });
+    }
+
+    // Assuming the rest of your logic follows here...
+    // For example, querying the store name and pending requests...
+
+    // Your query to fetch store_name (if needed)
+    const storeQuery = `SELECT store_name FROM stores WHERE store_id = ?`;
+    const [storeResult] = await db.query(storeQuery, [store_id]);
+
+    if (storeResult.length === 0) {
+      return res.status(404).json({ message: "Store not found." });
+    }
+
+    const storeName = storeResult[0].store_name;
+
+    // Your query to fetch pending requests
+    const pendingRequestsQuery = `
+      SELECT 
+        r.request_id,
+        s.store_name AS shop,
+        DATE(r.request_time) AS date,
+        TIME(r.request_time) AS time,
+        p.product_name,
+        p.brand_name,
+        p.product_type,
+        r.request_quantity
+      FROM request r
+      INNER JOIN products p ON r.product_id = p.product_id
+      INNER JOIN stores s ON r.store_id = s.store_id
+      WHERE r.is_seen = 0 AND req_from = ?
+      ORDER BY r.request_id, r.request_time;
+    `;
+
+    const [requests] = await db.query(pendingRequestsQuery, [storeName]);
+
+    if (requests.length === 0) {
+      return res.status(404).json({ message: "No pending requests found." });
+    }
+
+    // Grouping requests by request_id and shop
+    const groupedRequests = {};
+    requests.forEach((row) => {
+      const {
+        request_id,
+        shop,
+        date,
+        time,
+        product_name,
+        brand_name,
+        product_type,
+        request_quantity,
+      } = row;
+
+      if (!groupedRequests[request_id]) {
+        groupedRequests[request_id] = {
+          request_id,
+          shop,
+          date,
+          time,
+          products: [],
+        };
+      }
+
+      groupedRequests[request_id].products.push({
+        product_name,
+        brand_name,
+        product_type,
+        request_quantity,
+      });
+    });
+
+    // Convert the grouped object into an array
+    const result = Object.values(groupedRequests);
+
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error("Error fetching pending requests:", err.message);
+    return res.status(500).json({
+      message: "Error inside server while fetching pending requests.",
+      err,
+    });
   }
 };
 
@@ -1167,87 +1535,132 @@ const getProductDetailsByIMEIOrCode = async (req, res) => {
   }
 };
 
-
-
 const deleteProductOrIMEI = async (req, res) => {
   const { product_id, store_id, imei_number, quantity } = req.body;
 
   // If imei_number is a string, split it into an array, otherwise, set it to an empty array.
-  const imeiNumbers = (typeof imei_number === 'string' && imei_number.trim() !== '') ? imei_number.split(',') : [];
+  const imeiNumbers =
+    typeof imei_number === "string" && imei_number.trim() !== ""
+      ? imei_number.split(",")
+      : [];
 
   try {
     const store_name = store_id;
     console.log("Store Name:", req.body);
 
     // Get current product type, IMEI numbers, and stock quantity from `products` table
-    const [productRows] = await db.query(`SELECT product_type, imei_number, product_stock FROM products WHERE product_id = ?`, [product_id]);
+    const [productRows] = await db.query(
+      `SELECT product_type, imei_number, product_stock FROM products WHERE product_id = ?`,
+      [product_id]
+    );
     const productRow = productRows[0];
 
     if (!productRow) {
       return res.status(404).json({ message: "Product not found." });
     }
 
-    const { product_type, imei_number: existingIMEI, product_stock } = productRow;
+    const {
+      product_type,
+      imei_number: existingIMEI,
+      product_stock,
+    } = productRow;
 
     // If the product type is not "Mobile Phone", delete the product from the store stock.
-    if (product_type !== 'Mobile Phone') {
+    if (product_type !== "Mobile Phone") {
       // Delete the product from stock (no need for IMEI management).
-      await db.query(`DELETE FROM stock WHERE product_id = ? AND store_name = ?`, [product_id, store_name]);
+      await db.query(
+        `DELETE FROM stock WHERE product_id = ? AND store_name = ?`,
+        [product_id, store_name]
+      );
 
       // Update the stock in the products table as well
       const newProductStock = product_stock - quantity;
-      await db.query(`UPDATE products SET product_stock = ?, updated_at = NOW() WHERE product_id = ?`, [newProductStock, product_id]);
+      await db.query(
+        `UPDATE products SET product_stock = ?, updated_at = NOW() WHERE product_id = ?`,
+        [newProductStock, product_id]
+      );
 
-      return res.status(200).json({ message: "Product deleted from stock as it's not a mobile phone." });
+      return res
+        .status(200)
+        .json({
+          message: "Product deleted from stock as it's not a mobile phone.",
+        });
     }
 
     // Handle Mobile Phone: Get current IMEIs and stock quantity from `stock` table
-    const [stockRows] = await db.query(`SELECT imei_numbers, stock_quantity FROM stock WHERE product_id = ? AND store_name = ?`, [product_id, store_name]);
+    const [stockRows] = await db.query(
+      `SELECT imei_numbers, stock_quantity FROM stock WHERE product_id = ? AND store_name = ?`,
+      [product_id, store_name]
+    );
     const stockRow = stockRows[0];
 
     if (!stockRow) {
-      return res.status(404).json({ message: "Product not found in this store." });
+      return res
+        .status(404)
+        .json({ message: "Product not found in this store." });
     }
 
     let newStockQuantity = stockRow.stock_quantity;
 
     // Handle IMEI number deletion
     if (imeiNumbers.length > 0) {
-      const currentStockIMEIs = stockRow.imei_numbers ? stockRow.imei_numbers.split(',') : [];
-      const updatedStockIMEIs = currentStockIMEIs.filter(imei => !imeiNumbers.includes(imei));
+      const currentStockIMEIs = stockRow.imei_numbers
+        ? stockRow.imei_numbers.split(",")
+        : [];
+      const updatedStockIMEIs = currentStockIMEIs.filter(
+        (imei) => !imeiNumbers.includes(imei)
+      );
       newStockQuantity = stockRow.stock_quantity - imeiNumbers.length;
 
       // Update the `stock` table with new IMEI list and quantity
-      await db.query(`UPDATE stock SET imei_numbers = ?, stock_quantity = ?, updated_at = NOW() WHERE product_id = ? AND store_name = ?`, [updatedStockIMEIs.join(','), newStockQuantity, product_id, store_name]);
+      await db.query(
+        `UPDATE stock SET imei_numbers = ?, stock_quantity = ?, updated_at = NOW() WHERE product_id = ? AND store_name = ?`,
+        [updatedStockIMEIs.join(","), newStockQuantity, product_id, store_name]
+      );
     } else if (quantity > 0) {
       // If no IMEI numbers are provided, reduce the stock based on the quantity.
       newStockQuantity = stockRow.stock_quantity - quantity;
 
       // Update the `stock` table without affecting IMEIs
-      await db.query(`UPDATE stock SET stock_quantity = ?, updated_at = NOW() WHERE product_id = ? AND store_name = ?`, [newStockQuantity, product_id, store_name]);
+      await db.query(
+        `UPDATE stock SET stock_quantity = ?, updated_at = NOW() WHERE product_id = ? AND store_name = ?`,
+        [newStockQuantity, product_id, store_name]
+      );
     }
 
     // Get current IMEIs and stock from `products` table
-    let updatedProductIMEIs = existingIMEI ? existingIMEI.split(',') : [];
+    let updatedProductIMEIs = existingIMEI ? existingIMEI.split(",") : [];
     let newProductStock = product_stock;
 
     // Handle IMEI number removal from `products` table
     if (imeiNumbers.length > 0) {
-      updatedProductIMEIs = updatedProductIMEIs.filter(imei => !imeiNumbers.includes(imei));
+      updatedProductIMEIs = updatedProductIMEIs.filter(
+        (imei) => !imeiNumbers.includes(imei)
+      );
       newProductStock = product_stock - imeiNumbers.length;
 
       // Update the `products` table with new IMEI list and stock
-      await db.query(`UPDATE products SET imei_number = ?, product_stock = ?, updated_at = NOW() WHERE product_id = ?`, [updatedProductIMEIs.join(','), newProductStock, product_id]);
+      await db.query(
+        `UPDATE products SET imei_number = ?, product_stock = ?, updated_at = NOW() WHERE product_id = ?`,
+        [updatedProductIMEIs.join(","), newProductStock, product_id]
+      );
     } else if (quantity > 0) {
       // If no IMEI numbers were provided, reduce stock by the given quantity
       newProductStock = product_stock - quantity;
 
       // Update the `products` table with updated stock quantity
-      await db.query(`UPDATE products SET product_stock = ?, updated_at = NOW() WHERE product_id = ?`, [newProductStock, product_id]);
+      await db.query(
+        `UPDATE products SET product_stock = ?, updated_at = NOW() WHERE product_id = ?`,
+        [newProductStock, product_id]
+      );
     }
 
-    return res.status(200).json({ message: "Product or IMEI numbers removed successfully and stock updated." });
-
+    return res
+      .status(200)
+      .json({
+        message:
+          "Product or IMEI numbers removed successfully and stock updated.",
+      });
   } catch (err) {
     console.error("Error updating/deleting product:", err.message);
     return res.status(500).json({
@@ -1256,8 +1669,6 @@ const deleteProductOrIMEI = async (req, res) => {
     });
   }
 };
-
-
 
 module.exports = {
   getStockByProductAndStore,
@@ -1275,4 +1686,5 @@ module.exports = {
   getAllTransfers,
   markTransferAsRead,
   deleteProductOrIMEI,
+  getAllPendingRequestsbyreqfrom,
 };

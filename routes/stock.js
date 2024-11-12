@@ -15,10 +15,12 @@ const {
      markRequestAsRead,
      getProductDetailsByIMEIOrCode,
      markTransferAsRead,
+     getAllPendingRequestsbyreqfrom,
      deleteProductOrIMEI} = require("../controllers/stock");
 
 const router = express.Router();
 
+router.post('/PendingRequests/byid', getAllPendingRequestsbyreqfrom);//get All Pending Requests details by id
 router.get("/getStockDetails",getStockByProductAndStore ); //get stock by product and store
 
 router.get('/getStoresAndCategories', getStoresAndCategories);//get all stores and categories
