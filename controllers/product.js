@@ -514,38 +514,41 @@ const getitembyname = async (req, res) => {
 const getitembycode = async (req,res) =>{
   const product_code = req.params.product_code; 
 
-  const sql = `
-       SELECT 
-      product_id, 
-      product_name, 
-      product_code, 
-      product_price, 
-      warranty_period, 
-      product_stock, 
-      product_type, 
-      brand_name, 
-      imei_number,
-      product_model,
-      max_discount
-    FROM 
-      products
-    WHERE 
-      product_code = ?;`;
-  
-      try {
-          console.log("Fetching product by ID:", product_code);
-          
-          const [rows] = await db.query(sql, [product_code]); // Pass the product ID as a parameter to the query
-      
-          if (rows.length === 0) {
-            return res.status(404).json({ message: "Product not found." }); // Handle case where no product is found
-          }
-      console.log(rows);
-          return res.json(rows[0]); // Return the found product
-        } catch (err) {
-          console.error("Error fetching product:", err.message);
-          return res.status(500).json({ message: "Error inside server", err });
-        }
+
+  try {
+    let productQuery = "";
+    let queryParams = product_code;
+
+    // Run the first query based on product code
+    productQuery = `
+      SELECT * FROM products
+      WHERE product_code = ?;
+    `;
+
+    let [productRows] = await db.query(productQuery, [queryParams]);
+
+    // If no data is found with product code, try the IMEI number query
+    if (productRows.length === 0) {
+      productQuery = `
+        SELECT * FROM products
+        WHERE FIND_IN_SET(?, imei_number) > 0;
+      `;
+      [productRows] = await db.query(productQuery, [queryParams]);
+    }
+
+    if (productRows.length === 0) {
+      return res.status(404).json({ message: "Product not found." });
+    }
+
+    // Return product details
+    return res.status(200).json(productRows[0]);
+  } catch (err) {
+    console.error("Error fetching product details:", err.message);
+    return res.status(500).json({
+      message: "Error inside server during fetching product details.",
+      err,
+    });
+  }
 
 }
 
