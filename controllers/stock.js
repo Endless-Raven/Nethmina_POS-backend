@@ -248,6 +248,95 @@ const db = require("../config/db");
 //     connection.release();
 //   }
 // };
+
+
+const cancelTransfer = async (req, res) => {
+  const { transfer_id } = req.body;
+
+  if (!transfer_id) {
+    return res.status(400).json({ message: "Transfer ID is required." });
+  }
+
+  const connection = await db.getConnection();
+  await connection.beginTransaction();
+
+  try {
+    // Retrieve transfer details
+    const [transferRows] = await connection.query(
+      `SELECT transfer_from, product_id, transfer_quantity, imei_number, transfer_approval 
+       FROM transfer WHERE transfer_id = ?`,
+      [transfer_id]
+    );
+
+    if (!transferRows.length) {
+      await connection.rollback();
+      return res.status(400).json({ message: "Transfer record not found." });
+    }
+
+    const {
+      transfer_from: main_branch,
+      product_id,
+      transfer_quantity,
+      imei_number,
+      transfer_approval,
+    } = transferRows[0];
+
+    if (transfer_approval === 'received') {
+      await connection.rollback();
+      return res.status(400).json({ message: "Cannot cancel a completed transfer." });
+    }
+
+    // Check if the product is a mobile phone with IMEI numbers
+    const [productRows] = await connection.query(
+      `SELECT product_type FROM products WHERE product_id = ?`,
+      [product_id]
+    );
+
+    if (!productRows.length) {
+      await connection.rollback();
+      return res.status(400).json({ message: "Product not found." });
+    }
+
+    const { product_type } = productRows[0];
+
+    // Restore stock quantity in the originating branch
+    if (product_type === "Mobile Phone" && imei_number) {
+      const restoreStockQuery = `
+        UPDATE stock
+        SET stock_quantity = stock_quantity + 1,
+            imei_numbers = CONCAT(imei_numbers, ',', ?)
+        WHERE product_id = ? AND store_name = ?;
+      `;
+
+      await connection.query(restoreStockQuery, [imei_number, product_id, main_branch]);
+    } else {
+      const restoreStockQuery = `
+        UPDATE stock
+        SET stock_quantity = stock_quantity + ?
+        WHERE product_id = ? AND store_name = ?;
+      `;
+      await connection.query(restoreStockQuery, [transfer_quantity, product_id, main_branch]);
+    }
+
+    // Remove the transfer record
+    const deleteTransferQuery = `DELETE FROM transfer WHERE transfer_id = ?`;
+    await connection.query(deleteTransferQuery, [transfer_id]);
+
+    await connection.commit();
+    return res.status(200).json({ message: "Transfer canceled and stock restored successfully." });
+  } catch (err) {
+    await connection.rollback();
+    console.error("Error canceling transfer:", err.message);
+    return res.status(500).json({ message: "Error inside server during transfer cancellation.", err });
+  } finally {
+    connection.release();
+  }
+};
+
+
+
+
+
 const transferStock = async (req, res) => {
   console.log("Request body", req.body);
 
@@ -1012,6 +1101,96 @@ const deleteRequest = async (req, res) => {
   }
 };
 
+
+const getTransfersFromStore = async (req, res) => {
+  const { store_id } = req.query;
+
+  if (!store_id) {
+    return res
+      .status(400)
+      .json({ message: "Please provide a valid store_id." });
+  }
+
+  try {
+    // First, get the store name using the store_id
+    const storeQuery = `
+      SELECT store_name FROM stores
+      WHERE store_id = ?;
+    `;
+    const [storeRows] = await db.query(storeQuery, [store_id]);
+
+    if (storeRows.length === 0) {
+      return res.status(404).json({ message: "Store not found." });
+    }
+
+    const storeName = storeRows[0].store_name;
+
+    // Query to fetch transfer details where transfer_from = storeName
+    const transferQuery = `
+      SELECT 
+        t.transfer_id,
+        t.transfer_to AS 'to',
+        DATE(t.transfer_date) AS date,
+        TIME(t.transfer_time) AS time,
+        t.transfer_approval,
+        p.product_id,
+        p.product_name,
+        p.brand_name,
+        p.product_type,
+        t.transfer_quantity,
+        t.imei_number
+      FROM transfer t
+      INNER JOIN products p ON t.product_id = p.product_id
+      WHERE t.transfer_from = ?
+        AND t.transfer_approval = 'sending';
+    `;
+
+    const [transfers] = await db.query(transferQuery, [storeName]);
+
+    if (transfers.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No transfers found for this store." });
+    }
+
+    // Grouping transfers by transfer_id
+    const groupedTransfers = {};
+    transfers.forEach((row) => {
+      if (!groupedTransfers[row.transfer_id]) {
+        groupedTransfers[row.transfer_id] = {
+          transfer_id: row.transfer_id,
+          to: row.to,
+          date: row.date,
+          time: row.time,
+          transfer_approval: row.transfer_approval,
+          products: [],
+        };
+      }
+      groupedTransfers[row.transfer_id].products.push({
+        product_id: row.product_id,
+        product_name: row.product_name,
+        imei_number: row.imei_number,
+        brand_name: row.brand_name,
+        product_type: row.product_type,
+        transfer_quantity: row.transfer_quantity,
+      });
+    });
+
+    // Convert the grouped object into an array
+    const result = Object.values(groupedTransfers);
+
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error("Error fetching transfers initiated by store:", err.message);
+    return res
+      .status(500)
+      .json({ message: "Server error while fetching transfers.", err });
+  }
+};
+
+
+
+
 const getAllTransfers = async (req, res) => {
   const { store_id } = req.query;
 
@@ -1687,4 +1866,6 @@ module.exports = {
   markTransferAsRead,
   deleteProductOrIMEI,
   getAllPendingRequestsbyreqfrom,
+  cancelTransfer,
+  getTransfersFromStore,
 };
