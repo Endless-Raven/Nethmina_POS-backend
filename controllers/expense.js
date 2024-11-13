@@ -215,7 +215,7 @@ const deleteExpense = async (req, res) => {
 
 
   // Schedule addDailySalesToIncome to run at 11 PM every day
-cron.schedule('07 14 * * *', () => {
+cron.schedule('00 23 * * *', () => {
 console.log("Scheduled daily transfer expense check at 11 PM.");
     addDailyTransferExpenses();
   });
