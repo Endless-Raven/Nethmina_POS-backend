@@ -134,6 +134,57 @@ const deleteIncome = async (req, res) => {
     }
 };
 
+const getPendingIncomes = async (req, res) => {
+    const { store_id } = req.query; // Extract store_id from query parameters
+  
+    const sql = `
+      SELECT 
+        income.*, 
+        stores.store_name, 
+        users.username
+      FROM 
+        income 
+      JOIN 
+        stores 
+      ON 
+        income.store_id = stores.store_id
+      JOIN 
+        users 
+      ON 
+        income.user_id = users.user_id
+      WHERE 
+        income.approval_status = 'pending' `;
+  
+    try {
+      const [rows] = await db.query(sql); // Use store_id as a parameter
+      res.json(rows); // Include store name and user name in the response
+    } catch (err) {
+      console.error("Error fetching pending incomes:", err.message);
+      res.status(500).json({ message: "Error fetching pending incomes" });
+    }
+  };
+  
+  
+
+const approveIncome = async (req, res) => {
+    const { request_id } = req.body;
+    const sql = "UPDATE income SET approval_status = 'confirmed' WHERE income_id = ?";
+  
+    try {
+      const [result] = await db.query(sql, [request_id]);
+      if (result.affectedRows > 0) {
+        res.json({ message: "Income approved successfully" });
+      } else {
+        res.status(404).json({ message: "Income not found or already approved" });
+      }
+    } catch (err) {
+      console.error("Error approving income:", err.message);
+      res.status(500).json({ message: "Error approving income" });
+    }
+  };
+  
+
+
 const addDailySalesToIncome = async () => {
     const salesQuery = `
       SELECT 
@@ -196,4 +247,6 @@ module.exports = {
     addIncome,
     updateIncome,
     deleteIncome,
+    getPendingIncomes,
+    approveIncome,
 };
