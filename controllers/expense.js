@@ -212,6 +212,56 @@ const deleteExpense = async (req, res) => {
     }
 };
 
+const getPendingExpenses = async (req, res) => {
+    const { store_id } = req.query; // Extract store_id from query parameters
+  
+    const sql = `
+      SELECT 
+        expense.*, 
+        stores.store_name, 
+        users.username
+      FROM 
+        expense
+      JOIN 
+        stores 
+      ON 
+        expense.store_id = stores.store_id
+      JOIN 
+        users 
+      ON 
+        expense.user_id = users.user_id
+      WHERE 
+        expense.approval_status = 'pending' `;
+  
+    try {
+      const [rows] = await db.query(sql); // Use store_id as a parameter
+      res.json(rows); // Include store name and user name in the response
+    } catch (err) {
+      console.error("Error fetching pending expenses:", err.message);
+      res.status(500).json({ message: "Error fetching pending expenses" });
+    }
+  };
+  
+  
+  const approveExpense = async (req, res) => {
+    const { request_id } = req.body;
+    const sql = "UPDATE expense SET approval_status = 'confirmed' WHERE expense_id = ?";
+  
+    try {
+      const [result] = await db.query(sql, [request_id]);
+      if (result.affectedRows > 0) {
+        res.json({ message: "Expense approved successfully" });
+      } else {
+        res.status(404).json({ message: "Expense not found or already approved" });
+      }
+    } catch (err) {
+      console.error("Error approving expense:", err.message);
+      res.status(500).json({ message: "Error approving expense" });
+    }
+  };
+  
+  
+
 
 
   // Schedule addDailySalesToIncome to run at 11 PM every day
@@ -228,5 +278,7 @@ module.exports = {
     updateExpense,
     deleteExpense,
     addExpenseCategoryAndAmount,
-    getExpenseCategoryAndAmount
+    getExpenseCategoryAndAmount,
+    getPendingExpenses,
+    approveExpense
 };

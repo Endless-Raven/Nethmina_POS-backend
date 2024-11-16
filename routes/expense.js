@@ -1,6 +1,6 @@
 const express = require("express");
 
-const { addExpense, getExpenses, getExpenseById, addExpenseCategoryAndAmount, getExpenseCategoryAndAmount, updateExpense, deleteExpense } = require("../controllers/expense");
+const { addExpense, getExpenses, getExpenseById, addExpenseCategoryAndAmount, getExpenseCategoryAndAmount, updateExpense, deleteExpense,getPendingExpenses,approveExpense } = require("../controllers/expense");
 
 const router = express.Router();
 
@@ -24,4 +24,12 @@ router.post('/AddExpenseCategory', addExpenseCategoryAndAmount);
 
 // Route for getting expense categories and amounts
 router.get('/getExpenseCategoryAndAmount', getExpenseCategoryAndAmount);
+
+
+
+router.get('/getPendingExpenses', getPendingExpenses);
+
+
+router.post('/approve', approveExpense);
+
 module.exports = router;
