@@ -250,8 +250,75 @@ const makesale = async (req, res) => {
       ]);
     }
 
-    // If all inserts and updates are successful, return the response
-    return res.status(200).json({ message: "Sales and items added successfully.", sales_id });
+    // Step 7: Send receipt email
+    if (customer_details.customer_email) {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      host: "smtp.gmail.email",
+      port: 465,
+      secure: true, // true for port 465, false for other ports
+      auth: {
+        user: process.env.EMAIL, // Add this in your .env file
+        pass: process.env.EMAIL_PASS, // Add this in your .env file
+      },
+    });
+
+    const receiptHTML = `
+    <h1>Receipt for Your Purchase</h1>
+    <p><strong>Sales ID:</strong> ${sales_id}</p>
+    <p><strong>Store:</strong> ${store_name}</p>
+    <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+    <p><strong>Customer Name:</strong> ${customer_details.customer_name}</p>
+    <p><strong>Total Amount:</strong> RS${total_amount.toFixed(2)}</p>
+    <hr>
+    <h3>Products:</h3>
+    <table style="width: 100%; border-collapse: collapse; text-align: left;">
+      <thead>
+        <tr>
+          <th style="border: 1px solid #ddd; padding: 8px;">Product Name</th>
+          <th style="border: 1px solid #ddd; padding: 8px;">Quantity</th>
+          <th style="border: 1px solid #ddd; padding: 8px;">Price Each</th>
+          <th style="border: 1px solid #ddd; padding: 8px;">Discount</th>
+          <th style="border: 1px solid #ddd; padding: 8px;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${products
+          .map(
+            (p) => `
+          <tr>
+            <td style="border: 1px solid #ddd; padding: 8px;">${p.product_name}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">${p.quantity}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">RS${p.price.toFixed(2)}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">RS${p.discount.toFixed(2)}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">RS${(
+              (p.price - p.discount) *
+              p.quantity
+            ).toFixed(2)}</td>
+          </tr>
+        `
+          )
+          .join("")}
+      </tbody>
+    </table>
+    <hr>
+    <p><strong>Thank you for shopping with us!</strong></p>
+    <p>If you have any questions or concerns, feel free to contact us at ${process.env.EMAIL}.</p>
+  `;
+  
+console.log(process.env.EMAIL_USER);
+    await transporter.sendMail({
+      from: process.env.EMAIL,
+      to: customer_details.customer_email, // Customer's email
+      subject: "Your Receipt from " + store_name,
+      html: receiptHTML,
+    });
+}
+
+    // Respond to the client
+    return res.status(200).json({ message: "Sale processed successfully and receipt sent.", sales_id });
+  
+
   } catch (err) {
     console.error("Error processing sales and items:", err.message);
     return res.status(500).json({ message: "Error inside server during sales processing.", err });
@@ -621,6 +688,9 @@ cron.schedule("00 23 * * *", async () => {
     console.error("Error executing daily sales report cron job:", error);
   }
 });
+
+
+
 
 module.exports = {
   makesale,
