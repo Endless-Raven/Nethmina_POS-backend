@@ -306,7 +306,7 @@ const makesale = async (req, res) => {
     <p>If you have any questions or concerns, feel free to contact us at ${process.env.EMAIL}.</p>
   `;
   
-console.log(process.env.EMAIL_USER);
+console.log(process.env.EMAIL);
     await transporter.sendMail({
       from: process.env.EMAIL,
       to: customer_details.customer_email, // Customer's email
