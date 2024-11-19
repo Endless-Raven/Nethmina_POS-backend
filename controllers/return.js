@@ -124,15 +124,15 @@ const processReturnToStock = async (req, res) => {
         WHERE return_id = ?
       `;
     await db.query(updateReturnQuery, [return_id]);
-
-    
   } catch (err) {
     console.error("Error processing return to stock:", err.message);
     // Make sure only one response is sent even in case of errors
     if (!res.headersSent) {
-        return res.status(500).json({ message: "Error processing return to stock.", err });
-      }
+      return res
+        .status(500)
+        .json({ message: "Error processing return to stock.", err });
     }
+  }
 };
 
 const confirmReturn = async (req, res) => {
@@ -205,7 +205,6 @@ const confirmReturn = async (req, res) => {
   }
 };
 
-
 const getReturns = async (req, res) => {
   try {
     const { store_id } = req.query; // Optionally filter by store_id
@@ -214,7 +213,9 @@ const getReturns = async (req, res) => {
     const returnQuery = `
       SELECT pending.return_id, pending.description , pending.user_id, pending.store_id, pending.product_id, p.product_name, pending.amount, pending.imei_number, pending.status, pending.created_at, pending.updated_at
       FROM (
-        SELECT * FROM product_return WHERE status = 'pending' ${store_id ? "AND store_id = ?" : ""}
+        SELECT * FROM product_return WHERE status = 'pending' ${
+          store_id ? "AND store_id = ?" : ""
+        }
         ORDER BY created_at DESC LIMIT 5
       ) AS pending
       LEFT JOIN products p ON pending.product_id = p.product_id
@@ -223,7 +224,9 @@ const getReturns = async (req, res) => {
 
       SELECT confirmed.return_id, confirmed.description , confirmed.user_id, confirmed.store_id, confirmed.product_id, p.product_name, confirmed.amount, confirmed.imei_number, confirmed.status, confirmed.created_at, confirmed.updated_at
       FROM (
-        SELECT * FROM product_return WHERE status = 'confirmed' ${store_id ? "AND store_id = ?" : ""}
+        SELECT * FROM product_return WHERE status = 'confirmed' ${
+          store_id ? "AND store_id = ?" : ""
+        }
         ORDER BY created_at DESC LIMIT 5
       ) AS confirmed
       LEFT JOIN products p ON confirmed.product_id = p.product_id
@@ -232,7 +235,9 @@ const getReturns = async (req, res) => {
 
       SELECT stock.return_id , stock.description , stock.user_id, stock.store_id, stock.product_id, p.product_name, stock.amount, stock.imei_number, stock.status, stock.created_at, stock.updated_at
       FROM (
-        SELECT * FROM product_return WHERE status = 'stock' ${store_id ? "AND store_id = ?" : ""}
+        SELECT * FROM product_return WHERE status = 'stock' ${
+          store_id ? "AND store_id = ?" : ""
+        }
         ORDER BY created_at DESC LIMIT 5
       ) AS stock
       LEFT JOIN products p ON stock.product_id = p.product_id
@@ -281,16 +286,137 @@ const getPendingReturnsCount = async (req, res) => {
     return res.status(200).json({ count });
   } catch (err) {
     console.error("Error fetching pending returns count:", err.message);
-    return res.status(500).json({ message: "Error fetching pending returns count.", err });
+    return res
+      .status(500)
+      .json({ message: "Error fetching pending returns count.", err });
   }
 };
 
+const processReturnToStockWithNewExpense = async (req, res) => {
+  const {
+    return_id,
+    user,
+    expense_category,
+    expense_amount,
+    store_id,
+  } = req.body;
 
+  try {
+    // Fetch return details
+    const returnQuery = `
+      SELECT user_id as userID, store_id, product_id, amount, imei_number
+      FROM product_return
+      WHERE return_id = ?
+    `;
+    const [returnDetails] = await db.query(returnQuery, [return_id]);
+
+    if (returnDetails.length === 0) {
+      return res.status(404).json({ message: "Return request not found." });
+    }
+
+    const { userID, product_id, amount, imei_number } = returnDetails[0];
+
+    // Fetch sale details for the IMEI number
+    const salesItemQuery = `
+      SELECT sale_id
+      FROM sales_items
+      WHERE imei_number = ?
+    `;
+    const [salesItem] = await db.query(salesItemQuery, [imei_number]);
+
+    if (salesItem.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "Sale item not found for the given IMEI number." });
+    }
+
+    const { sale_id } = salesItem[0];
+
+    // Update stock and IMEI details
+    try {
+      const stockUpdateReq = {
+        params: { product_id },
+        body: {
+          product_stock: 1,
+          imei_number: [imei_number],
+          user,
+          category: "Mobile Phone",
+        },
+      };
+
+      await updateStockAndIMEI(stockUpdateReq, res);
+    } catch (err) {
+      return res
+        .status(500)
+        .json({ message: "Error updating stock and IMEI.", err });
+    }
+
+    // Update sales_items table
+    const updateSalesItemQuery = `
+      UPDATE sales_items
+      SET item_price = item_price - ?, imei_number = ''
+      WHERE imei_number = ?
+    `;
+    await db.query(updateSalesItemQuery, [amount, imei_number]);
+
+    // Insert refund into expense table for return
+    const insertRefundExpenseQuery = `
+      INSERT INTO expense (expense_category, expense_type, expense_amount, approval_status, user_id, store_id, created_at, updated_at)
+      VALUES ('Return Product', 'Refund', ?, 'confirmed', ?, ?, NOW(), NOW())
+    `;
+    await db.query(insertRefundExpenseQuery, [amount, userID, store_id]);
+
+    // Insert new expense with details from frontend
+    const insertNewExpenseQuery = `
+      INSERT INTO expense (expense_category, expense_type, expense_amount, approval_status, user_id, store_id, created_at, updated_at)
+      VALUES (?, 'Other', ?, 'confirmed', ?, ?, NOW(), NOW())
+    `;
+    await db.query(insertNewExpenseQuery, [
+      expense_category,
+      expense_amount,
+      user,
+      store_id,
+    ]);
+
+    // Update sales table
+    const updateSalesQuery = `
+      UPDATE sales 
+      SET total_amount = total_amount - ? 
+      WHERE sale_id = ?;
+    `;
+    await db.query(updateSalesQuery, [amount, sale_id]);
+
+    // Update product_return status
+    const updateReturnQuery = `
+      UPDATE product_return
+      SET status = 'stock', updated_at = NOW()
+      WHERE return_id = ?
+    `;
+    await db.query(updateReturnQuery, [return_id]);
+
+  
+  } catch (err) {
+    console.error(
+      "Error processing return to stock with new expense:",
+      err.message
+    );
+
+    if (!res.headersSent) {
+      return res
+        .status(500)
+        .json({
+          message: "Error processing return to stock with new expense.",
+          err,
+        });
+    }
+  }
+};
 
 module.exports = {
   addReturnProduct,
   processReturnToStock,
   confirmReturn,
   getReturns,
-  getPendingReturnsCount
+  getPendingReturnsCount,
+  processReturnToStockWithNewExpense
 };
