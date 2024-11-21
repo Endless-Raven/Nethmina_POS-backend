@@ -316,7 +316,7 @@ const processReturnToStockWithNewExpense = async (req, res) => {
 
     const { userID, product_id, amount, imei_number } = returnDetails[0];
 
-    // Fetch sale details for the IMEI number
+
     const salesItemQuery = `
       SELECT sale_id
       FROM sales_items
