@@ -60,7 +60,7 @@ router.get("/searchProductsBy/Model",searchProductsByModel); //get products Mode
 
 router.put("/updateStockAndIMEI/:product_id",updateStockAndIMEI ); //update item StockAndIMEI 
 
-router.get("/track/ProductDetails",getProductDetails ); //update item StockAndIMEI 
+router.get("/track/ProductDetails",getProductDetails ); //track phone by imei
 
 
 

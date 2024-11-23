@@ -58,11 +58,13 @@ const makesale = async (req, res) => {
       user,
       customer_details,
     } = req.body;
-
+console.log(req.body);
     // Step 1: Validate customer details (check phone number)
     const customerPhoneNumber = customer_details.customer_phone_number;
     if (!customerPhoneNumber) {
-      return res.status(400).json({ message: "Customer phone number is required." });
+      return res
+        .status(400)
+        .json({ message: "Customer phone number is required." });
     }
 
     // Check if customer already exists by phone number
@@ -91,7 +93,9 @@ const makesale = async (req, res) => {
     // Step 2: Retrieve store_name based on user (user_id)
     const store_name = await getStoreNameByUser(user);
     if (!store_name) {
-      return res.status(400).json({ message: "Store not found for the given user." });
+      return res
+        .status(400)
+        .json({ message: "Store not found for the given user." });
     }
 
     // Step 3: Check stock availability for all products
@@ -103,7 +107,10 @@ const makesale = async (req, res) => {
         [store_name, product_id]
       );
 
-      if (stockResult.length === 0 || stockResult[0].stock_quantity < quantity) {
+      if (
+        stockResult.length === 0 ||
+        stockResult[0].stock_quantity < quantity
+      ) {
         return res.status(400).json({
           message: `Insufficient stock for product ID: ${product_id}. Sale not allowed.`,
         });
@@ -148,7 +155,7 @@ const makesale = async (req, res) => {
     `;
 
     for (const product of products) {
-      const { product_id, quantity, price, serial_number, discount } = product;
+      const { product_id, quantity, price, serial_number, discount,capacity,color } = product;
 
       const [productDetails] = await db.query(
         "SELECT warranty_period FROM products WHERE product_id = ?",
@@ -169,7 +176,8 @@ const makesale = async (req, res) => {
           "SELECT imei_number FROM products WHERE product_id = ?",
           [product_id]
         );
-        const currentImeiNumbers = currentImeiResult[0]?.imei_number.split(",") || [];
+        const currentImeiNumbers =
+          currentImeiResult[0]?.imei_number.split(",") || [];
 
         if (!currentImeiNumbers.includes(serial_number)) {
           return res.status(400).json({
@@ -188,14 +196,17 @@ const makesale = async (req, res) => {
         );
 
         if (productStockUpdated.affectedRows === 0) {
-          throw new Error(`Insufficient product stock for product ${product_id}.`);
+          throw new Error(
+            `Insufficient product stock for product ${product_id}.`
+          );
         }
 
         const [currentStockImeiResult] = await db.query(
           "SELECT imei_numbers FROM stock WHERE store_name = ? AND product_id = ?",
           [store_name, product_id]
         );
-        const currentStockImeiNumbers = currentStockImeiResult[0]?.imei_numbers.split(",") || [];
+        const currentStockImeiNumbers =
+          currentStockImeiResult[0]?.imei_numbers.split(",") || [];
 
         const updatedStockImeiNumbers = currentStockImeiNumbers
           .filter((imei) => imei !== serial_number)
@@ -210,19 +221,21 @@ const makesale = async (req, res) => {
         ]);
 
         if (stockUpdated.affectedRows === 0) {
-          throw new Error(`Failed to update stock for product ${product_id} in store ${store_name}.`);
+          throw new Error(
+            `Failed to update stock for product ${product_id} in store ${store_name}.`
+          );
         }
-      }else {
+      } else {
         // For non-mobile phones, update product stock and set IMEI number to an empty string
         const [productStockUpdated] = await db.query(
           updateProductStockAndImeiQuery,
           [quantity, "", product_id, quantity] // Set IMEI number to an empty string
         );
-      
+
         if (productStockUpdated.affectedRows === 0) {
           throw new Error(`Failed to update stock for product ${product_id}.`);
         }
-      
+
         // Update store stock and set IMEI numbers to an empty string
         const [stockUpdated] = await db.query(updateStockQuery, [
           quantity,
@@ -231,9 +244,11 @@ const makesale = async (req, res) => {
           product_id,
           quantity,
         ]);
-      
+
         if (stockUpdated.affectedRows === 0) {
-          throw new Error(`Failed to update stock for product ${product_id} in store ${store_name}.`);
+          throw new Error(
+            `Failed to update stock for product ${product_id} in store ${store_name}.`
+          );
         }
       }
 
@@ -252,79 +267,106 @@ const makesale = async (req, res) => {
 
     // Step 7: Send receipt email
     if (customer_details.customer_email) {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      host: "smtp.gmail.email",
-      port: 465,
-      secure: true, // true for port 465, false for other ports
-      auth: {
-        user: process.env.EMAIL, // Add this in your .env file
-        pass: process.env.EMAIL_PASS, // Add this in your .env file
-      },
-    });
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        host: "smtp.gmail.email",
+        port: 465,
+        secure: true, // true for port 465, false for other ports
+        auth: {
+          user: process.env.EMAIL, // Add this in your .env file
+          pass: process.env.EMAIL_PASS, // Add this in your .env file
+        },
+      });
 
-    const receiptHTML = `
-    <h1>Receipt for Your Purchase</h1>
-    <p><strong>Sales ID:</strong> ${sales_id}</p>
-    <p><strong>Store:</strong> ${store_name}</p>
-    <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-    <p><strong>Customer Name:</strong> ${customer_details.customer_name}</p>
-    <p><strong>Total Amount:</strong> RS${total_amount.toFixed(2)}</p>
-    <hr>
-    <h3>Products:</h3>
-    <table style="width: 100%; border-collapse: collapse; text-align: left;">
-      <thead>
-        <tr>
-          <th style="border: 1px solid #ddd; padding: 8px;">Product Name</th>
-          <th style="border: 1px solid #ddd; padding: 8px;">Quantity</th>
-          <th style="border: 1px solid #ddd; padding: 8px;">Price Each</th>
-          <th style="border: 1px solid #ddd; padding: 8px;">Discount</th>
-          <th style="border: 1px solid #ddd; padding: 8px;">Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${products
-          .map(
-            (p) => `
+      const receiptHTML = `
+      <div style="font-family: Arial, sans-serif; width: 100%; text-align: center;">
+        <h1 style="margin-bottom: 0;">Nethmina Cellular</h1>
+        <p style="margin: 0;">No 9, First Floor, MC Plaza, Kurunegala</p>
+        <p style="margin: 0;">Hospital Junction, Polonnaruwa (Infront of KFC)</p>
+        <p style="margin: 0;">TP : 071 642 7418 &nbsp;&nbsp; | &nbsp;&nbsp; TP : 070 480 4800</p>
+        <hr>
+      </div>
+      <div style="font-family: Arial, sans-serif; text-align: left; margin-bottom: 20px;">
+        <p><strong>Customer :</strong> ${customer_details.customer_name}</p>
+        <p><strong>Mobile :</strong> ${customerPhoneNumber}</p>
+        <p><strong>Address :</strong> ${customer_details.customer_address}</p>
+        <div style=" justify-content: space-between;">
+          <p><strong>Invoice ID :</strong> ${sales_id}</p>
+          <p><strong>Date :</strong> ${new Date().toLocaleDateString()}</p>
+          <p><strong>Time :</strong> ${new Date().toLocaleTimeString()}</p>
+          <p><strong>Salesman :</strong> ${sales_person}</p>
+        </div>
+      </div>
+      <table style="width: 100%; border-collapse: collapse; text-align: left;">
+        <thead>
           <tr>
-            <td style="border: 1px solid #ddd; padding: 8px;">${p.product_name}</td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${p.quantity}</td>
-            <td style="border: 1px solid #ddd; padding: 8px;">RS${p.price.toFixed(2)}</td>
-            <td style="border: 1px solid #ddd; padding: 8px;">RS${p.discount.toFixed(2)}</td>
-            <td style="border: 1px solid #ddd; padding: 8px;">RS${(
-              (p.price - p.discount) *
-              p.quantity
-            ).toFixed(2)}</td>
+            <th style="border: 1px solid #ddd; padding: 8px;">NO</th>
+            <th style="border: 1px solid #ddd; padding: 8px;">PRODUCT NAME</th>
+            <th style="border: 1px solid #ddd; padding: 8px;">PRICE</th>
+            <th style="border: 1px solid #ddd; padding: 8px;">QTY</th>
+            <th style="border: 1px solid #ddd; padding: 8px;">WARRANTY</th>
+            <th style="border: 1px solid #ddd; padding: 8px;">DISCOUNT</th>
+            <th style="border: 1px solid #ddd; padding: 8px;">TOTAL</th>
           </tr>
-        `
-          )
-          .join("")}
-      </tbody>
-    </table>
-    <hr>
-    <p><strong>Thank you for shopping with us!</strong></p>
-    <p>If you have any questions or concerns, feel free to contact us at ${process.env.EMAIL}.</p>
-  `;
-  
-console.log(process.env.EMAIL);
-    await transporter.sendMail({
-      from: process.env.EMAIL,
-      to: customer_details.customer_email, // Customer's email
-      subject: "Your Receipt from " + store_name,
-      html: receiptHTML,
-    });
-}
+        </thead>
+        <tbody>
+          ${products
+            .map(
+              (p, index) => `
+            <tr>
+              <td style="border: 1px solid #ddd; padding: 8px;">${index + 1}</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">${p.product_name}<br>${p.capacity}<br>${p.color}<br>${p.serial_number}</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">RS${parseFloat(p.price || 0).toFixed(2)}</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">${p.quantity}</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">${p.warranty_period || "N/A"}</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">RS${parseFloat(p.discount || 0).toFixed(2)}</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">RS${((parseFloat(p.price || 0) - parseFloat(p.discount || 0)) * parseInt(p.quantity || 0)).toFixed(2)}</td>
+            </tr>
+          `
+            )
+            .join("")}
+        </tbody>
+      </table>
+      <div style="font-family: Arial, sans-serif; margin-top: 20px;">
+        <p><strong>Total :</strong> RS${total_amount.toFixed(2)}</p>
+      </div>
+      <hr>
+      <div style="font-family: Arial, sans-serif; font-size: 12px; margin-top: 20px;">
+        <p><strong>Note:</strong> Goods Sold are Non Refundable / Not Exchangeable.</p>
+        <p><strong>Warranty does not Apply:</strong></p>
+        <ul style="margin: 0; padding-left: 20px;">
+          <li>To damages caused by Accident / Abuse / Misuse / Flood</li>
+          <li>To consumable Parts such as Batteries</li>
+          <li>To Cosmetic Damages (Scratches / Dents)</li>
+          <li>Display, Touch and No Power</li>
+        </ul>
+      </div>
+    `;
+    
+
+      console.log(process.env.EMAIL);
+      await transporter.sendMail({
+        from: process.env.EMAIL,
+        to: customer_details.customer_email, // Customer's email
+        subject: "Your Receipt from " + store_name,
+        html: receiptHTML,
+      });
+    }
 
     // Respond to the client
-    return res.status(200).json({ message: "Sale processed successfully and receipt sent.", sales_id });
-  
-
+    return res
+      .status(200)
+      .json({
+        message: "Sale processed successfully and receipt sent.",
+        sales_id,
+      });
   } catch (err) {
     console.error("Error processing sales and items:", err.message);
-    return res.status(500).json({ message: "Error inside server during sales processing.", err });
+    return res
+      .status(500)
+      .json({ message: "Error inside server during sales processing.", err });
   }
 };
-
 
 const getsales = async (req, res) => {
   console.log("Request body", req.body);
@@ -615,19 +657,15 @@ const getDailySalesReport = async (req, res) => {
     });
 
     pdfDoc.end();
-    return res
-      .status(200)
-      .json({
-        message: "Daily sales report generated and email will be sent.",
-      });
+    return res.status(200).json({
+      message: "Daily sales report generated and email will be sent.",
+    });
   } catch (err) {
     console.error("Error generating daily sales report:", err.message);
-    return res
-      .status(500)
-      .json({
-        message: "Error inside server during daily sales report generation.",
-        err,
-      });
+    return res.status(500).json({
+      message: "Error inside server during daily sales report generation.",
+      err,
+    });
   }
 };
 
@@ -688,9 +726,6 @@ cron.schedule("00 23 * * *", async () => {
     console.error("Error executing daily sales report cron job:", error);
   }
 });
-
-
-
 
 module.exports = {
   makesale,
