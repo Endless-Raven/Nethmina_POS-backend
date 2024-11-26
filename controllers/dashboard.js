@@ -43,10 +43,10 @@ const getDashboardData = async (req, res) => {
 
     // Low stock query
     const [lowStockData] = await db.query(`
-      SELECT p.product_name, p.product_type, s.stock_quantity
+      SELECT p.product_name, p.product_type, s.stock_quantity,s.store_name
       FROM stock s
       JOIN products p ON s.product_id = p.product_id
-      WHERE s.stock_quantity <= 10
+      WHERE s.stock_quantity <= p.low_count
       ORDER BY s.stock_quantity ASC;
     `);
 
