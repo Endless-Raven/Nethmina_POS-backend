@@ -293,13 +293,8 @@ const getPendingReturnsCount = async (req, res) => {
 };
 
 const processReturnToStockWithNewExpense = async (req, res) => {
-  const {
-    return_id,
-    user,
-    expense_category,
-    expense_amount,
-    store_id,
-  } = req.body;
+  const { return_id, user, expense_category, expense_amount, store_id } =
+    req.body;
 
   try {
     // Fetch return details
@@ -315,7 +310,6 @@ const processReturnToStockWithNewExpense = async (req, res) => {
     }
 
     const { userID, product_id, amount, imei_number } = returnDetails[0];
-
 
     const salesItemQuery = `
       SELECT sale_id
@@ -393,8 +387,6 @@ const processReturnToStockWithNewExpense = async (req, res) => {
       WHERE return_id = ?
     `;
     await db.query(updateReturnQuery, [return_id]);
-
-  
   } catch (err) {
     console.error(
       "Error processing return to stock with new expense:",
@@ -402,12 +394,10 @@ const processReturnToStockWithNewExpense = async (req, res) => {
     );
 
     if (!res.headersSent) {
-      return res
-        .status(500)
-        .json({
-          message: "Error processing return to stock with new expense.",
-          err,
-        });
+      return res.status(500).json({
+        message: "Error processing return to stock with new expense.",
+        err,
+      });
     }
   }
 };
@@ -418,5 +408,5 @@ module.exports = {
   confirmReturn,
   getReturns,
   getPendingReturnsCount,
-  processReturnToStockWithNewExpense
+  processReturnToStockWithNewExpense,
 };
