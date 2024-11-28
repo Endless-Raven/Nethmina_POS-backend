@@ -58,7 +58,6 @@ const makesale = async (req, res) => {
       user,
       customer_details,
     } = req.body;
-console.log(req.body);
     // Step 1: Validate customer details (check phone number)
     const customerPhoneNumber = customer_details.customer_phone_number;
     if (!customerPhoneNumber) {
@@ -155,7 +154,15 @@ console.log(req.body);
     `;
 
     for (const product of products) {
-      const { product_id, quantity, price, serial_number, discount,capacity,color } = product;
+      const {
+        product_id,
+        quantity,
+        price,
+        serial_number,
+        discount,
+        capacity,
+        color,
+      } = product;
 
       const [productDetails] = await db.query(
         "SELECT warranty_period FROM products WHERE product_id = ?",
@@ -314,13 +321,28 @@ console.log(req.body);
             .map(
               (p, index) => `
             <tr>
-              <td style="border: 1px solid #ddd; padding: 8px;">${index + 1}</td>
-              <td style="border: 1px solid #ddd; padding: 8px;">${p.product_name}<br>${p.capacity}<br>${p.color}<br>${p.serial_number}</td>
-              <td style="border: 1px solid #ddd; padding: 8px;">RS${parseFloat(p.price || 0).toFixed(2)}</td>
-              <td style="border: 1px solid #ddd; padding: 8px;">${p.quantity}</td>
-              <td style="border: 1px solid #ddd; padding: 8px;">${p.warranty_period || "N/A"}</td>
-              <td style="border: 1px solid #ddd; padding: 8px;">RS${parseFloat(p.discount || 0).toFixed(2)}</td>
-              <td style="border: 1px solid #ddd; padding: 8px;">RS${((parseFloat(p.price || 0) - parseFloat(p.discount || 0)) * parseInt(p.quantity || 0)).toFixed(2)}</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">${
+                index + 1
+              }</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">${
+                p.product_name
+              }<br>${p.capacity}<br>${p.color}<br>${p.serial_number}</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">RS${parseFloat(
+                p.price || 0
+              ).toFixed(2)}</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">${
+                p.quantity
+              }</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">${
+                p.warranty_period || "N/A"
+              }</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">RS${parseFloat(
+                p.discount || 0
+              ).toFixed(2)}</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">RS${(
+                (parseFloat(p.price || 0) - parseFloat(p.discount || 0)) *
+                parseInt(p.quantity || 0)
+              ).toFixed(2)}</td>
             </tr>
           `
             )
@@ -342,9 +364,7 @@ console.log(req.body);
         </ul>
       </div>
     `;
-    
 
-      console.log(process.env.EMAIL);
       await transporter.sendMail({
         from: process.env.EMAIL,
         to: customer_details.customer_email, // Customer's email
@@ -354,12 +374,10 @@ console.log(req.body);
     }
 
     // Respond to the client
-    return res
-      .status(200)
-      .json({
-        message: "Sale processed successfully and receipt sent.",
-        sales_id,
-      });
+    return res.status(200).json({
+      message: "Sale processed successfully and receipt sent.",
+      sales_id,
+    });
   } catch (err) {
     console.error("Error processing sales and items:", err.message);
     return res
@@ -369,12 +387,9 @@ console.log(req.body);
 };
 
 const getsales = async (req, res) => {
-  console.log("Request body", req.body);
-
   const sql = "SELECT * FROM sales";
 
   try {
-    console.log("get products");
     const [rows] = await db.query(sql);
     return res.json(rows);
   } catch (err) {
@@ -390,7 +405,6 @@ const getsalebyid = async (req, res) => {
   const sql = "SELECT * FROM sales WHERE sale_id = ?";
 
   try {
-    console.log("Fetching sale with ID:", sale_id);
     const [rows] = await db.query(sql, [sale_id]);
 
     // Check if the sale was found

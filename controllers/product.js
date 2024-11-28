@@ -4,8 +4,6 @@ const nodemailer = require("nodemailer");
 
 //add item
 const additem = async (req, res) => {
-  console.log("Request body", req.body);
-
   // Step 0: Check if the product_name exists in the request body
   if (!req.body.product_name) {
     return res.status(400).json({ message: "Product name is required." });
@@ -63,8 +61,6 @@ const additem = async (req, res) => {
       newImeiNumbers.join(","),
     ]);
 
-    console.log("Inserted Product ID:", insertedProduct.insertId);
-
     return res.status(200).json({
       message:
         "New product added successfully and stock updated for the store.",
@@ -80,7 +76,6 @@ const getProductTypes = async (req, res) => {
   const sql = "SELECT DISTINCT product_type FROM products";
 
   try {
-    console.log("Fetching product types...");
     const [rows] = await db.query(sql);
 
     // Map the result to an array of product types
@@ -101,7 +96,6 @@ const getProductcolor = async (req, res) => {
 
     // Map the result to an array of product types
     const color = rows.map((row) => row.color);
-    console.log(`color ${color}`);
     return res.json(color);
   } catch (err) {
     // console.error("Error fetching product types:", err.message);
@@ -115,7 +109,6 @@ const getBrandsByProductType = async (req, res) => {
   const sql = "SELECT DISTINCT brand_name FROM products WHERE product_type = ?";
 
   try {
-    console.log(`Fetching brand names for product type: ${product_type}...`);
     const [rows] = await db.query(sql, [product_type]);
 
     // Map the result to an array of brand names
@@ -159,7 +152,6 @@ const getFilteredProductDetails = async (req, res) => {
       }
     }
 
-    console.log("Fetching all product details...");
     // Fetch all products and stock data from the database
     const [rows] = await db.query(`
       SELECT p.*, s.store_name, s.stock_quantity, s.imei_numbers
@@ -208,8 +200,6 @@ const getFilteredProductDetails = async (req, res) => {
             product.grade.toLowerCase().includes(grade.toLowerCase())))
       );
     });
-    console.log(`Applying filters...${grade}`);
-    console.log("Filtered products:", filteredProducts);
     return res.json(filteredProducts);
   } catch (err) {
     console.error("Error fetching product details:", err.message);
@@ -231,10 +221,6 @@ const getProductforMangerinventory = async (req, res) => {
     GROUP BY products.product_id;`;
 
   try {
-    console.log(
-      `Fetching products for brand: ${brand_name} and product type: ${product_type}...`
-    );
-
     // Query products and IMEI numbers
     const [productRows] = await db.query(productQuery, [
       brand_name,
@@ -290,9 +276,6 @@ const getProductModelsByBrandName = async (req, res) => {
     GROUP BY products.product_id;`;
 
   try {
-    console.log(
-      `Fetching products for brand: ${brand_name} and product type: ${product_type}...`
-    );
     const [rows] = await db.query(sql, [brand_name, product_type]);
 
     // Process the rows to convert the concatenated IMEI numbers into an array
@@ -349,7 +332,6 @@ const searchProductsByName = async (req, res) => {
 
 const getImeiNumbers = async (req, res) => {
   const { shop, Product_id } = req.body; // Get the store name and product ID from the request body
-  console.log(`dsf${Product_id}`);
   const sql = `
     SELECT imei_numbers 
     FROM stock 
@@ -362,11 +344,9 @@ const getImeiNumbers = async (req, res) => {
 
     // Check if any stock entries are found
     if (rows.length === 0) {
-      return res
-        .status(404)
-        .json({
-          message: "No IMEI numbers found for the given store and product ID.",
-        });
+      return res.status(404).json({
+        message: "No IMEI numbers found for the given store and product ID.",
+      });
     }
 
     // Map the result to extract IMEI numbers
@@ -408,18 +388,15 @@ const searchProductsByType = async (req, res) => {
     return res.json(productTypes);
   } catch (err) {
     console.error("Error fetching product types:", err.message);
-    return res
-      .status(500)
-      .json({
-        message: "Error inside server during product type search.",
-        err,
-      });
+    return res.status(500).json({
+      message: "Error inside server during product type search.",
+      err,
+    });
   }
 };
 
 const searchProductsByModel = async (req, res) => {
   const { searchText } = req.query; // Get the search text from the query parameters
-  console.log(searchText);
 
   if (!searchText) {
     return res.status(400).json({ message: "Search text is required." });
@@ -444,18 +421,15 @@ const searchProductsByModel = async (req, res) => {
     return res.json(productModels);
   } catch (err) {
     console.error("Error fetching product models:", err.message);
-    return res
-      .status(500)
-      .json({
-        message: "Error inside server during product model search.",
-        err,
-      });
+    return res.status(500).json({
+      message: "Error inside server during product model search.",
+      err,
+    });
   }
 };
 
 const searchProductsByBrand = async (req, res) => {
   const { searchText } = req.query; // Get the search text from the query parameters
-  console.log(searchText);
   if (!searchText) {
     return res.status(400).json({ message: "Search text is required." });
   }
@@ -490,7 +464,6 @@ const getitems = async (req, res) => {
   const sql = "SELECT * FROM products";
 
   try {
-    console.log("get products");
     const [rows] = await db.query(sql);
     return res.json(rows);
   } catch (err) {
@@ -509,14 +482,11 @@ const getitembyid = async (req, res) => {
         WHERE product_id = ?`;
 
   try {
-    console.log("Fetching product by ID:", product_id);
-
     const [rows] = await db.query(sql, [product_id]); // Pass the product ID as a parameter to the query
 
     if (rows.length === 0) {
       return res.status(404).json({ message: "Product not found." }); // Handle case where no product is found
     }
-    console.log(rows);
     return res.json(rows[0]); // Return the found product
   } catch (err) {
     console.error("Error fetching product:", err.message);
@@ -533,15 +503,11 @@ const getitembyname = async (req, res) => {
         WHERE product_name LIKE ?`;
 
   try {
-    console.log("Fetching product by name:", product_name);
-
     const [rows] = await db.query(sql, `%${product_name}%`); // Pass the product name as a parameter to the query
 
     if (rows.length === 0) {
       return res.status(404).json({ message: "Product not found." }); // Handle case where no product is found
     }
-
-    console.log(rows);
     return res.json(rows); // Return the found product
   } catch (err) {
     console.error("Error fetching product:", err.message);
@@ -591,8 +557,6 @@ const getitembycode = async (req, res) => {
 
 //update item
 const updateitem = async (req, res) => {
-  console.log("Request body:", req.body); // Log the request body
-
   const sql = `
     UPDATE products 
     SET product_name = ?, 
@@ -654,8 +618,6 @@ const deleteitem = async (req, res) => {
   await connection.beginTransaction();
 
   try {
-    console.log("Deleting product and its stock:", product_name);
-
     // Get product_id for the given product name
     const [productRows] = await connection.query(getProductIdQuery, [
       product_name,
@@ -697,8 +659,6 @@ const deleteitem = async (req, res) => {
 };
 
 const updateStockAndIMEI = async (req, res) => {
-  console.log("Request body:", req.body); // Log the request body
-
   // SQL queries for fetching and updating the product in `products` table
   const sqlSelectProduct = `
     SELECT product_stock, imei_number, product_id
@@ -761,11 +721,9 @@ const updateStockAndIMEI = async (req, res) => {
         imei_number.length === 0 ||
         imei_number.includes(null)
       ) {
-        return res
-          .status(400)
-          .json({
-            message: "IMEI number is required for Mobile Phone category.",
-          });
+        return res.status(400).json({
+          message: "IMEI number is required for Mobile Phone category.",
+        });
       }
       newIMEINumbers = imei_number.filter((imei) => imei); // Filter out null or invalid values
       updatedIMEINumbers = [...currentIMEINumbers, ...newIMEINumbers].join(",");
@@ -818,12 +776,10 @@ const updateStockAndIMEI = async (req, res) => {
       ]);
     }
 
-    return res
-      .status(200)
-      .json({
-        message:
-          "Stock and IMEI numbers updated successfully in both products and stock tables.",
-      });
+    return res.status(200).json({
+      message:
+        "Stock and IMEI numbers updated successfully in both products and stock tables.",
+    });
   } catch (err) {
     console.error("Error updating Product and Stock:", err.message); // Log any error messages
     return res.status(500).json({ message: "Error inside server.", err });
@@ -832,7 +788,6 @@ const updateStockAndIMEI = async (req, res) => {
 
 const getProductDetails = async (req, res) => {
   const { imei_number } = req.query;
-  console.log(imei_number);
 
   if (!imei_number) {
     return res
@@ -920,12 +875,10 @@ const getProductDetails = async (req, res) => {
     return res.status(404).json({ message: "Product not found" });
   } catch (err) {
     console.error("Error fetching product details:", err.message);
-    return res
-      .status(500)
-      .json({
-        message: "Error inside server while fetching product details",
-        err,
-      });
+    return res.status(500).json({
+      message: "Error inside server while fetching product details",
+      err,
+    });
   }
 };
 
@@ -958,7 +911,6 @@ const sendLowStockEmail = async () => {
     const [lowStockItems] = await db.query(lowStockQuery);
 
     if (lowStockItems.length === 0) {
-      console.log("No low stock items found.");
       return;
     }
 
@@ -980,7 +932,6 @@ const sendLowStockEmail = async () => {
 
     // Send the email
     await transporter.sendMail(mailOptions);
-    console.log("Low stock email sent successfully!");
   } catch (error) {
     console.error("Error sending low stock email:", error);
   }
@@ -988,7 +939,6 @@ const sendLowStockEmail = async () => {
 
 // Schedule the task to run daily at 9:00 AM
 cron.schedule("00 23 * * *", () => {
-  console.log("Checking low stock items and sending email...");
   sendLowStockEmail();
 });
 
