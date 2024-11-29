@@ -103,6 +103,23 @@ const getProductcolor = async (req, res) => {
   }
 };
 
+
+// Get all distinct product types as an array
+const getProductCapacity = async (req, res) => {
+  const sql = "SELECT DISTINCT capacity FROM products";
+
+  try {
+    const [rows] = await db.query(sql);
+
+    // Map the result to an array of product types
+    const capacity = rows.map((row) => row.capacity);
+    return res.json(capacity);
+  } catch (err) {
+    // console.error("Error fetching product types:", err.message);
+    return res.status(500).json({ message: "Error inside server", err });
+  }
+};
+
 // Get distinct brand names for a given product type
 const getBrandsByProductType = async (req, res) => {
   const { product_type } = req.query; // Get product_type from request parameters
@@ -559,7 +576,8 @@ const getitembycode = async (req, res) => {
 const updateitem = async (req, res) => {
   const sql = `
     UPDATE products 
-    SET product_name = ?, 
+    SET product_name = ?,
+        product_code = ?,
         product_price = ?, 
         warranty_period = ?, 
         product_type = ?, 
@@ -577,6 +595,7 @@ const updateitem = async (req, res) => {
 
   const values = [
     req.body.product_name,
+    req.body.product_code,
     req.body.product_price,
     req.body.warranty_period,
     req.body.product_type,
@@ -963,6 +982,7 @@ module.exports = {
   getProductforMangerinventory,
   getProductcolor,
   getImeiNumbers,
+  getProductCapacity,
 };
 
 /*
