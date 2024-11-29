@@ -819,6 +819,9 @@ const getProductDetails = async (req, res) => {
     const productQuery = `
       SELECT 
         p.product_id,
+        p.color,
+        p.capacity,
+        p.grade,
         p.product_name,
         p.product_price,
         p.product_type,
