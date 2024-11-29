@@ -1468,7 +1468,7 @@ const getProductDetailsByIMEIOrCode = async (req, res) => {
 
 const deleteProductOrIMEI = async (req, res) => {
   const { product_id, store_id, imei_number, quantity } = req.body;
-
+console.log(req.body);
   // If imei_number is a string, split it into an array, otherwise, set it to an empty array.
   const imeiNumbers =
     typeof imei_number === "string" && imei_number.trim() !== ""
@@ -1496,23 +1496,42 @@ const deleteProductOrIMEI = async (req, res) => {
     } = productRow;
 
     // If the product type is not "Mobile Phone", delete the product from the store stock.
+    // If the product type is not "Mobile Phone", update the stock in the store.
     if (product_type !== "Mobile Phone") {
-      // Delete the product from stock (no need for IMEI management).
-      await db.query(
-        `DELETE FROM stock WHERE product_id = ? AND store_name = ?`,
+      // Reduce the stock quantity in the stock table
+      const [stockEntry] = await db.query(
+        `SELECT stock_quantity FROM stock WHERE product_id = ? AND store_name = ?`,
         [product_id, store_name]
       );
+      if (stockEntry) {
+        const updatedStockQuantity = stockEntry[0].stock_quantity - quantity;
+       
+        if (updatedStockQuantity < 0) {
+          return res.status(400).json({
+            message: "Insufficient stock to process the reduction.",
+          });
+        }
 
-      // Update the stock in the products table as well
-      const newProductStock = product_stock - quantity;
-      await db.query(
-        `UPDATE products SET product_stock = ?, updated_at = NOW() WHERE product_id = ?`,
-        [newProductStock, product_id]
-      );
+        await db.query(
+          `UPDATE stock SET stock_quantity = ?, updated_at = NOW() WHERE product_id = ? AND store_name = ?`,
+          [updatedStockQuantity, product_id, store_name]
+        );
 
-      return res.status(200).json({
-        message: "Product deleted from stock as it's not a mobile phone.",
-      });
+        // Update the stock in the products table
+        const newProductStock = product_stock - quantity;
+        await db.query(
+          `UPDATE products SET product_stock = ?, updated_at = NOW() WHERE product_id = ?`,
+          [newProductStock, product_id]
+        );
+
+        return res.status(200).json({
+          message: "Stock quantity updated for non-mobile phone product.",
+        });
+      } else {
+        return res.status(404).json({
+          message: "Product not found in store stock.",
+        });
+      }
     }
 
     // Handle Mobile Phone: Get current IMEIs and stock quantity from `stock` table
