@@ -20,7 +20,8 @@ const { additem ,
       getProductforMangerinventory,
       getProductcolor,
       getImeiNumbers,
-      getProductCapacity
+      getProductCapacity,
+      getitembetails
     } = require("../controllers/product");
 
 
@@ -33,6 +34,8 @@ router.get("/", getitems );//get items
 router.get("/:product_id",getitembyid );// get item by id
 router.get("/productCode/:product_code",getitembycode );// get item by code
 router.get("/productName/:product_name",getitembyname );// get item by name
+router.get("/productdetails/:product_name",getitembetails );// get item details by name
+
 
 router.put("/:product_id",updateitem ); //update item details 
 router.delete("/:product_name",deleteitem); //delete item

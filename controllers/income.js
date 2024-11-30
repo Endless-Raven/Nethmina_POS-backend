@@ -210,6 +210,7 @@ const addDailySalesToIncome = async () => {
   const salesQuery = `
       SELECT 
         c.store_id,
+        c.cashier_id,
         SUM(s.total_amount) AS total_sales
       FROM 
         sales s
@@ -218,11 +219,11 @@ const addDailySalesToIncome = async () => {
       WHERE 
         DATE(s.sale_date) = CURDATE()  -- Filter for today's sales by date only, ignoring time
       GROUP BY 
-        c.store_id
+        c.store_id, c.cashier_id -- Include cashier_id in GROUP BY to comply with ONLY_FULL_GROUP_BY
     `;
 
   try {
-    // Fetch total sales for each store
+    // Fetch total sales for each store and cashier
     const [salesData] = await db.query(salesQuery);
 
     if (salesData.length === 0) {
@@ -231,22 +232,24 @@ const addDailySalesToIncome = async () => {
 
     // Insert daily sales data into income table
     const incomeInsertQuery = `
-        INSERT INTO income (income_category, income_type, income_amount, approval_status, store_id, created_at, updated_at)
-        VALUES (?, ?, ?, 'confirmed', ?, NOW(), NOW())
+        INSERT INTO income (income_category, income_type, user_id, income_amount, approval_status, store_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'confirmed', ?, NOW(), NOW())
       `;
 
     for (const sale of salesData) {
       await db.query(incomeInsertQuery, [
         "Daily Sales", // income_category
         "Sales Revenue", // income_type
+        sale.cashier_id, // user_id (assuming cashier_id maps to user_id)
         sale.total_sales, // income_amount
-        sale.store_id, // store_id from users
+        sale.store_id, // store_id
       ]);
     }
   } catch (err) {
     console.error("Error adding daily sales to income table:", err.message);
   }
 };
+
 
 // Schedule addDailySalesToIncome to run at 11 PM every day
 cron.schedule("00 23 * * *", () => {

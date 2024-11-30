@@ -76,10 +76,18 @@ const addDailyTransferExpenses = async () => {
 
     // Query to get unique `transfer_from` store names with transfers today
     const [transfers] = await connection.query(
-      `SELECT DISTINCT transfer_from AS store_name
-         FROM transfer
-         WHERE DATE(transfer_date) = ?`,
-      [currentDate]
+      `SELECT 
+      transfer_from AS source_branch, 
+      COUNT(DISTINCT transfer_to) AS unique_destinations
+    FROM 
+      transfer
+    WHERE 
+      DATE(transfer_date) = ?
+       AND transfer_to != 'repair'
+    GROUP BY 
+      transfer_from`,
+   [currentDate]
+
     );
 
     // If there are no transfers, commit an empty transaction and exit
@@ -101,22 +109,26 @@ const addDailyTransferExpenses = async () => {
 
     // Loop through each transfer to get the store_id and insert the expense
     for (const transfer of transfers) {
-      const storeName = transfer.store_name;
+      const sourceBranch = transfer.source_branch;
+      const uniqueDestinations = transfer.unique_destinations;
 
-      // Get the store_id for the current store_name
-      const [storeData] = await connection.query(getStoreIdQuery, [storeName]);
+    // Get the store_id for the current source branch
+    const [storeData] = await connection.query(getStoreIdQuery, [sourceBranch]);
 
-      if (storeData.length === 0) {
-        console.warn(`Store '${storeName}' not found in the stores table.`);
-        continue; // Skip if store is not found
-      }
+    if (storeData.length === 0) {
+      console.warn(`Store '${sourceBranch}' not found in the stores table.`);
+      continue; // Skip if store is not found
+    }
 
       const storeId = storeData[0].store_id;
+
+       // Calculate the transfer handling fee (500 per unique destination branch)
+       const transferHandlingFee = uniqueDestinations * 500;
 
       // Prepare the expense values
       const expenseValues = [
         "Transfer Handling Fee", // expense_category
-        500, // expense_amount
+        transferHandlingFee, 
         "Fixed", // expense_type
         "confirmed", // approval_status
         1, // user_id (if applicable)

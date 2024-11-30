@@ -100,7 +100,7 @@ const cancelTransfer = async (req, res) => {
 
 const transferStock = async (req, res) => {
   const { products, from: main_branch_id, to: target_branch, user } = req.body;
-
+  console.log(products.imei_number);
   if (!products || !main_branch_id || !target_branch) {
     return res.status(400).json({
       message: "Invalid request body. Please include products, from, and to.",
@@ -141,7 +141,7 @@ const transferStock = async (req, res) => {
         await connection.rollback();
         return res.status(400).json({ message: "Product not found." });
       }
-      const { product_type, imei_number } = productRows[0];
+      const { product_type } = productRows[0];
 
       if (product_type === "Mobile Phone") {
         let imei_number_list = Array.isArray(product.imei_number)
@@ -157,53 +157,46 @@ const transferStock = async (req, res) => {
               "Provided IMEI numbers count does not match the transfer quantity.",
           });
         }
+        // Validate each IMEI number individually
+        for (let imei of imei_number_list) {
+          const checkImeiQuery = `
+    SELECT imei_numbers FROM stock
+    WHERE product_id = ? AND store_name = ? AND FIND_IN_SET(?, imei_numbers) > 0;
+  `;
+          const [imeiRows] = await connection.query(checkImeiQuery, [
+            product_id,
+            main_branch,
+            imei,
+          ]);
 
-        const checkImeiQuery = `
-            SELECT imei_numbers FROM stock
-            WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
-          `;
-        const [imeiRows] = await connection.query(checkImeiQuery, [
-          product_id,
-          main_branch,
-          transfer_quantity,
-        ]);
+          if (!imeiRows.length) {
+            await connection.rollback();
+            return res.status(400).json({
+              message: `IMEI number ${imei} not available in the main branch stock.`,
+            });
+          }
 
-        if (
-          !imeiRows.length ||
-          !imei_number_list.every((num) =>
-            imeiRows[0].imei_numbers.split(",").includes(num)
-          )
-        ) {
-          await connection.rollback();
-          return res.status(400).json({
-            message: "IMEI numbers not available in the main branch stock.",
-          });
-        }
+          // Remove the IMEI number from the stock
+          const removeImeiQuery = `
+    UPDATE stock
+    SET stock_quantity = stock_quantity - 1, 
+        imei_numbers = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', imei_numbers, ','), CONCAT(',', ?, ','), ',')),
+        updated_at = NOW()
+    WHERE product_id = ? AND store_name = ? AND FIND_IN_SET(?, imei_numbers) > 0;
+  `;
+          const [updateResult] = await connection.query(removeImeiQuery, [
+            imei,
+            product_id,
+            main_branch,
+            imei,
+          ]);
 
-        const reduceMainStockQuery = `
-            UPDATE stock
-            SET stock_quantity = stock_quantity - ?, updated_at = NOW(),
-                imei_numbers = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', imei_numbers, ','), CONCAT(',', ?, ','), ',')) 
-            WHERE product_id = ? AND store_name = ? AND stock_quantity >= ?;
-          `;
-        const reduceParams = [
-          transfer_quantity,
-          imei_number_list.join(","),
-          product_id,
-          main_branch,
-          transfer_quantity,
-        ];
-        const [mainStockUpdated] = await connection.query(
-          reduceMainStockQuery,
-          reduceParams
-        );
-
-        if (mainStockUpdated.affectedRows === 0) {
-          await connection.rollback();
-          return res.status(400).json({
-            message:
-              "Insufficient stock in the main branch or product not found.",
-          });
+          if (updateResult.affectedRows === 0) {
+            await connection.rollback();
+            return res.status(400).json({
+              message: `Failed to remove IMEI number ${imei} from the main branch stock.`,
+            });
+          }
         }
       } else {
         const reduceMainStockQuery = `
@@ -772,6 +765,9 @@ const getProductRequests = async (req, res) => {
         r.request_quantity,
         p.product_id,
         p.product_name,
+        p.color,
+        p.capacity,
+        p.grade,
         p.brand_name,
         p.product_type
       FROM request r
@@ -804,6 +800,9 @@ const getProductRequests = async (req, res) => {
       groupedRequests[row.request_id].products.push({
         product_id: row.product_id,
         product_name: row.product_name,
+        color: row.color,
+        capacity: row.capacity,
+        grade: row.grade,
         brand_name: row.brand_name,
         product_type: row.product_type,
         request_quentity: row.request_quantity,
@@ -1184,6 +1183,9 @@ const getAllPendingRequestsbyreqfrom = async (req, res) => {
         TIME(r.request_time) AS time,
         p.product_name,
         p.brand_name,
+        p.color,
+        p.grade,
+        p.capacity,
         p.product_type,
         r.request_quantity
       FROM request r
@@ -1208,6 +1210,9 @@ const getAllPendingRequestsbyreqfrom = async (req, res) => {
         date,
         time,
         product_name,
+        color,
+        capacity,
+        grade,
         brand_name,
         product_type,
         request_quantity,
@@ -1226,6 +1231,9 @@ const getAllPendingRequestsbyreqfrom = async (req, res) => {
       groupedRequests[request_id].products.push({
         product_name,
         brand_name,
+        color,
+        capacity,
+        grade,
         product_type,
         request_quantity,
       });
@@ -1256,6 +1264,9 @@ const getAllPendingRequests = async (req, res) => {
         TIME(r.request_time) AS time,
         p.product_name,
         p.brand_name,
+        p.color,
+        p.grade,
+        p.capacity,
         p.product_type,
         r.request_quantity
       FROM request r
@@ -1281,6 +1292,9 @@ const getAllPendingRequests = async (req, res) => {
         date,
         time,
         product_name,
+        color,
+        capacity,
+        grade,
         brand_name,
         product_type,
         request_quantity,
@@ -1299,6 +1313,9 @@ const getAllPendingRequests = async (req, res) => {
 
       groupedRequests[request_id].products.push({
         product_name,
+        color,
+        grade,
+        capacity,
         brand_name,
         product_type,
         request_quantity,
@@ -1468,7 +1485,7 @@ const getProductDetailsByIMEIOrCode = async (req, res) => {
 
 const deleteProductOrIMEI = async (req, res) => {
   const { product_id, store_id, imei_number, quantity } = req.body;
-console.log(req.body);
+  console.log(req.body);
   // If imei_number is a string, split it into an array, otherwise, set it to an empty array.
   const imeiNumbers =
     typeof imei_number === "string" && imei_number.trim() !== ""
@@ -1505,7 +1522,7 @@ console.log(req.body);
       );
       if (stockEntry) {
         const updatedStockQuantity = stockEntry[0].stock_quantity - quantity;
-       
+
         if (updatedStockQuantity < 0) {
           return res.status(400).json({
             message: "Insufficient stock to process the reduction.",
