@@ -532,6 +532,31 @@ const getitembyname = async (req, res) => {
   }
 };
 
+const getitembetails = async (req, res) => {
+  const product_name = req.params.product_name;
+
+  const sql = `
+  SELECT product_id, product_name ,color,capacity,grade
+        FROM products
+        WHERE product_name LIKE ?`;
+
+  try {
+    const [rows] = await db.query(sql, `%${product_name}%`); // Pass the product name as a parameter to the query
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Product not found." }); // Handle case where no product is found
+    }
+    return res.json(rows); // Return the found product
+  } catch (err) {
+    console.error("Error fetching product:", err.message);
+    return res.status(500).json({ message: "Error inside server", err });
+  }
+};
+
+
+
+
+
 //get item by code
 const getitembycode = async (req, res) => {
   const product_code = req.params.product_code;
@@ -986,6 +1011,7 @@ module.exports = {
   getProductcolor,
   getImeiNumbers,
   getProductCapacity,
+  getitembetails
 };
 
 /*
