@@ -8,11 +8,20 @@ const additem = async (req, res) => {
   if (!req.body.product_name) {
     return res.status(400).json({ message: "Product name is required." });
   }
-
+  const checkProductcodeQuery = `
+  SELECT imei_number, product_stock, product_id, warranty_period 
+  FROM products 
+  WHERE product_code = ?
+`;
   const checkProductQuery = `SELECT imei_number, product_stock, product_id, warranty_period FROM products WHERE product_name = ?`;
   const getStoreNameQuery = `SELECT s.store_name FROM users u JOIN stores s ON u.store_id = s.store_id WHERE u.user_id = ?`;
 
   try {
+      // Step 2: Check if the product_code already exists
+      const [existingProduct] = await db.query(checkProductcodeQuery, [req.body.product_code]);
+      if (existingProduct.length > 0) {
+        throw new Error("Product code is already in use.");
+      }
     const [store] = await db.query(getStoreNameQuery, [req.body.user]);
 
     if (store.length === 0) {
@@ -66,8 +75,18 @@ const additem = async (req, res) => {
         "New product added successfully and stock updated for the store.",
     });
   } catch (err) {
-    console.error("Error adding Product:", err.message);
-    return res.status(500).json({ message: "Error inside server.", err });
+        // Handle known errors differently
+        if (err.message === "Product code is already in use.") {
+          return res.status(400).json({ message: err.message }); // Return specific error message
+        }
+    
+        // Handle generic errors
+        console.error("Error adding Product:", err.message);
+        return res.status(500).json({ 
+          message: "Error inside server.", 
+          error: err.message 
+        });
+    
   }
 };
 
@@ -178,13 +197,19 @@ const getFilteredProductDetails = async (req, res) => {
 
     // Apply .filter() based on conditions, including the new columns
     const filteredProducts = rows.filter((product) => {
+      const matchesProductNameOrCode =
+      (!product_name ||
+        product_name === "All" ||
+        (product.product_name &&
+          product.product_name
+            .toLowerCase()
+            .includes(product_name.toLowerCase())) ||
+        (product.product_code &&
+          product.product_code
+            .toLowerCase()
+            .includes(product_name.toLowerCase())));
       return (
-        (!product_name ||
-          product_name === "All" ||
-          (product.product_name &&
-            product.product_name
-              .toLowerCase()
-              .includes(product_name.toLowerCase()))) &&
+        matchesProductNameOrCode &&
         (!resolvedStoreName ||
           resolvedStoreName === "All" ||
           (product.store_name &&
@@ -228,21 +253,36 @@ const getFilteredProductDetails = async (req, res) => {
 const getProductforMangerinventory = async (req, res) => {
   const { brand_name, product_type, store_id } = req.query; // Get brand_name, product_type, and store_id from request query parameters
 
-  const productQuery = `
-    SELECT 
-      products.*,
-      GROUP_CONCAT(sales_items.imei_number) AS imei_numbers
-    FROM products
-    LEFT JOIN sales_items ON products.product_id = sales_items.product_id
-    WHERE products.brand_name = ? AND products.product_type = ?
-    GROUP BY products.product_id;`;
-
   try {
+    // Build dynamic conditions for brand_name and product_type
+    let whereConditions = [];
+    let queryParams = [];
+
+    if (brand_name && brand_name !== "All") {
+      whereConditions.push(`products.brand_name = ?`);
+      queryParams.push(brand_name);
+    }
+    if (product_type && product_type !== "All") {
+      whereConditions.push(`products.product_type = ?`);
+      queryParams.push(product_type);
+    }
+
+    // Construct the WHERE clause dynamically
+    const whereClause = whereConditions.length > 0
+      ? `WHERE ${whereConditions.join(" AND ")}`
+      : "";
+
+    const productQuery = `
+      SELECT 
+        products.*,
+        GROUP_CONCAT(sales_items.imei_number) AS imei_numbers
+      FROM products
+      LEFT JOIN sales_items ON products.product_id = sales_items.product_id
+      ${whereClause}
+      GROUP BY products.product_id;`;
+
     // Query products and IMEI numbers
-    const [productRows] = await db.query(productQuery, [
-      brand_name,
-      product_type,
-    ]);
+    const [productRows] = await db.query(productQuery, queryParams);
 
     // Query to get the store name
     const storeQuery = `SELECT store_name FROM stores WHERE store_id = ?;`;
@@ -279,6 +319,7 @@ const getProductforMangerinventory = async (req, res) => {
     return res.status(500).json({ message: "Error inside server", err });
   }
 };
+
 
 // Get all products by brand name and product type
 const getProductModelsByBrandName = async (req, res) => {
