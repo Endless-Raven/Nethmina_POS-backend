@@ -357,6 +357,66 @@ const getProductModelsByBrandName = async (req, res) => {
   }
 };
 
+
+
+const getProductModelsByBrandNameStoreName = async (req, res) => {
+  const { brand_name, product_type, store_name } = req.query; // Get parameters from query
+  
+  // SQL query to get product IDs for the store
+  const productIdsSql = `
+    SELECT product_id 
+    FROM stock 
+    INNER JOIN stores ON stock.store_name = stores.store_name
+    WHERE stores.store_name = ?;
+  `;
+
+  // SQL query to fetch product details filtered by product IDs, brand_name, and product_type
+  const productsSql = `
+    SELECT 
+      products.*, 
+      GROUP_CONCAT(sales_items.imei_number) AS imei_numbers
+    FROM products
+    LEFT JOIN sales_items ON products.product_id = sales_items.product_id
+    WHERE products.product_id IN (?) 
+      AND products.brand_name = ? 
+      AND products.product_type = ?
+    GROUP BY products.product_id;
+  `;
+
+  try {
+    // Step 1: Fetch product IDs for the specified store
+    const [productRows] = await db.query(productIdsSql, [store_name]);
+    const productIds = productRows.map(row => row.product_id);
+
+    if (productIds.length === 0) {
+      // If no product IDs are found for the store, return an empty response
+      return res.json([]);
+    }
+
+    // Step 2: Fetch product details using the product IDs, brand_name, and product_type
+    const [rows] = await db.query(productsSql, [productIds, brand_name, product_type]);
+
+    // Step 3: Process the rows to convert concatenated IMEI numbers into an array
+    const processedRows = rows.map(row => {
+      const imeiArray = row.imei_numbers ? row.imei_numbers.split(",") : [];
+      const { imei_numbers, ...rest } = row; // Remove imei_numbers field
+
+      return {
+        ...rest,
+        imei_numbers: imeiArray, // Replace with array format
+      };
+    });
+
+    // Step 4: Return processed data
+    return res.json(processedRows);
+  } catch (err) {
+    console.error("Error fetching products:", err.message);
+    return res.status(500).json({ message: "Error inside server", err });
+  }
+};
+
+
+
 const searchProductsByName = async (req, res) => {
   const { searchText } = req.query; // Get the search text from the query parameters
 
@@ -531,6 +591,29 @@ const getitems = async (req, res) => {
 };
 
 //get item
+const getproductbycode = async (req, res) => {
+  const product_code = req.params.product_code;
+  console.log(product_code);
+
+  const sql = `
+        SELECT *
+        FROM products
+        WHERE product_code = ?`;
+
+  try {
+    const [rows] = await db.query(sql, [product_code ]); // Pass the product ID as a parameter to the query
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Product not found." }); // Handle case where no product is found
+    }
+    return res.json(rows[0]); // Return the found product
+  } catch (err) {
+    console.error("Error fetching product:", err.message);
+    return res.status(500).json({ message: "Error inside server", err });
+  }
+};
+
+//get item
 const getitembyid = async (req, res) => {
   const product_id = req.params.product_id;
 
@@ -549,6 +632,37 @@ const getitembyid = async (req, res) => {
   } catch (err) {
     console.error("Error fetching product:", err.message);
     return res.status(500).json({ message: "Error inside server", err });
+  }
+};
+
+const getProductDetailsByID = async (req, res) => {
+  const { product_id } = req.body;
+
+  if (!product_id) {
+    return res.status(400).json({ message: "Product ID is required." });
+  }
+
+  try {
+    // Query to get product details using product_id
+    const productQuery = `
+      SELECT product_code FROM products
+      WHERE product_id = ?;
+    `;
+
+    const [product_code] = await db.query(productQuery, [product_id]);
+
+    if (product_code  .length === 0) {
+      return res.status(404).json({ message: "Product not found." });
+    }
+
+    // Return product details
+    return res.status(200).json(product_code[0]);
+  } catch (err) {
+    console.error("Error fetching product details:", err.message);
+    return res.status(500).json({
+      message: "Error inside server during fetching product details.",
+      err,
+    });
   }
 };
 
@@ -600,35 +714,51 @@ const getitembetails = async (req, res) => {
 
 //get item by code
 const getitembycode = async (req, res) => {
-  const product_code = req.params.product_code;
-
+  const { product_code, store_name } = req.params; // Assume store_name is passed as a parameter
   try {
-    let productQuery = "";
-    let queryParams = product_code;
-
-    // Run the first query based on product code
-    productQuery = `
-      SELECT * FROM products
-      WHERE product_code = ?;
+    // Step 1: Get product IDs for the specified store
+    const productIdsQuery = `
+      SELECT product_id 
+      FROM stock 
+      INNER JOIN stores ON stock.store_name = stores.store_name
+      WHERE stores.store_name = ?;
     `;
 
-    let [productRows] = await db.query(productQuery, [queryParams]);
+    const [productRows] = await db.query(productIdsQuery, [store_name]);
+    const productIds = productRows.map(row => row.product_id);
 
-    // If no data is found with product code, try the IMEI number query
-    if (productRows.length === 0) {
-      productQuery = `
-        SELECT * FROM products
-        WHERE FIND_IN_SET(?, imei_number) > 0;
-      `;
-      [productRows] = await db.query(productQuery, [queryParams]);
+    if (productIds.length === 0) {
+      // No products found for the store
+      return res.status(404).json({ message: "No products found for this store." });
     }
 
-    if (productRows.length === 0) {
+    // Step 2: Query for product details using product code or IMEI number
+    let productQuery = `
+      SELECT * 
+      FROM products 
+      WHERE product_id IN (?) 
+        AND product_code = ?;
+    `;
+    let [productDetails] = await db.query(productQuery, [productIds, product_code]);
+
+    // If no products match the product code, search for IMEI number
+    if (productDetails.length === 0) {
+      productQuery = `
+        SELECT * 
+        FROM products 
+        WHERE product_id IN (?) 
+          AND FIND_IN_SET(?, imei_number) > 0;
+      `;
+      [productDetails] = await db.query(productQuery, [productIds, product_code]);
+    }
+
+    if (productDetails.length === 0) {
+      // If no data is found, return a 404 response
       return res.status(404).json({ message: "Product not found." });
     }
 
-    // Return product details
-    return res.status(200).json(productRows[0]);
+    // Step 3: Return the product details
+    return res.status(200).json(productDetails[0]);
   } catch (err) {
     console.error("Error fetching product details:", err.message);
     return res.status(500).json({
@@ -873,7 +1003,6 @@ const updateStockAndIMEI = async (req, res) => {
 
 
 const checkimeiInStock = async (req, res) => {
-  console.log( req.body);
   const { product_id, store_id, product_serial } = req.body;
 
   try {
@@ -899,12 +1028,11 @@ const checkimeiInStock = async (req, res) => {
     const isSerialFound = imeiNumbersList.includes(product_serial);
 
     if (isSerialFound) {
-      console.log("done");
       return res.status(200).json({
         message: "Serial number found in stock.",
       });
     } else {
-      console.log("no");
+     
       return res.status(404).json({
         message: "Serial number not found in stock.",
       });
@@ -1104,6 +1232,9 @@ module.exports = {
   getProductCapacity,
   getitembetails,
   checkimeiInStock,
+  getProductModelsByBrandNameStoreName,
+  getProductDetailsByID,
+  getproductbycode,
 };
 
 /*

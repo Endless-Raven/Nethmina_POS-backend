@@ -22,7 +22,10 @@ const { additem ,
       getImeiNumbers,
       getProductCapacity,
       getitembetails,
-      checkimeiInStock
+      checkimeiInStock,
+      getProductModelsByBrandNameStoreName,
+      getProductDetailsByID,
+      getproductbycode
     } = require("../controllers/product");
 
 
@@ -32,10 +35,13 @@ const router = express.Router();
 router.post("/",additem ); //add item
 router.get("/", getitems );//get items
 
+router.get("/productCode/:product_code",getproductbycode );// get item by id
 router.get("/:product_id",getitembyid );// get item by id
-router.get("/productCode/:product_code",getitembycode );// get item by code
+router.get("/productCode/:product_code/:store_name",getitembycode );// get item by code
 router.get("/productName/:product_name",getitembyname );// get item by name
 router.get("/productdetails/:product_name",getitembetails );// get item details by name
+
+router.post("/productcode/byID",getProductDetailsByID );// get item details by name
 
 
 router.put("/:product_id",updateitem ); //update item details 
@@ -48,6 +54,9 @@ router.get("/getProductCapacity/get",getProductCapacity); //get product Capacity
 
 router.get("/brands/byproducttype",getBrandsByProductType); //get brand list for POS
 router.get("/models/bybrand",getProductModelsByBrandName); //get models list for POS
+
+
+router.get("/models/bybrandAndStore",getProductModelsByBrandNameStoreName); //get models list for POS
 
 router.get("/inventory/stock",getProductforMangerinventory); //get products for manger inventory
 
