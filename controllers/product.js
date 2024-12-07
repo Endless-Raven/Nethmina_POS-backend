@@ -871,6 +871,56 @@ const updateStockAndIMEI = async (req, res) => {
   }
 };
 
+
+const checkimeiInStock = async (req, res) => {
+  console.log( req.body);
+  const { product_id, store_id, product_serial } = req.body;
+
+  try {
+    // Validate request parameters
+    if (!product_id || !store_id || !product_serial) {
+      return res.status(400).json({ message: "Missing required fields." });
+    }
+
+    // Query to get stock data
+    const [stockResult] = await db.query(
+      "SELECT imei_numbers FROM stock WHERE product_id = ? AND store_name = ?",
+      [product_id, store_id]
+    );
+
+    if (stockResult.length === 0) {
+      return res.status(404).json({
+        message: "Stock not found for the given product ID and store ID.",
+      });
+    }
+
+    // Check if the serial number exists in the imei_numbers list
+    const imeiNumbersList = stockResult[0].imei_numbers?.split(",") || [];
+    const isSerialFound = imeiNumbersList.includes(product_serial);
+
+    if (isSerialFound) {
+      console.log("done");
+      return res.status(200).json({
+        message: "Serial number found in stock.",
+      });
+    } else {
+      console.log("no");
+      return res.status(404).json({
+        message: "Serial number not found in stock.",
+      });
+    }
+  } catch (error) {
+    console.error("Error checking serial number:", error);
+    res.status(500).json({ message: "Internal server error." });
+  }
+
+}
+
+
+
+
+
+
 const getProductDetails = async (req, res) => {
   const { imei_number } = req.query;
 
@@ -1052,7 +1102,8 @@ module.exports = {
   getProductcolor,
   getImeiNumbers,
   getProductCapacity,
-  getitembetails
+  getitembetails,
+  checkimeiInStock,
 };
 
 /*
