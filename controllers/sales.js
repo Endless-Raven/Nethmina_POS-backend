@@ -99,13 +99,28 @@ const makesale = async (req, res) => {
 
     // Step 3: Check stock availability for all products
     for (const product of products) {
-      const { product_id, quantity } = product;
-
+      const { product_id, quantity, serial_number } = product;
+    
+      // Get product details
+      const [productResult] = await db.query(
+        "SELECT product_type FROM products WHERE product_id = ?",
+        [product_id]
+      );
+    
+      if (productResult.length === 0) {
+        return res.status(404).json({
+          message: `Product ID: ${product_id} not found.`,
+        });
+      }
+    
+      const { product_type } = productResult[0];
+    
+      // Check stock details
       const [stockResult] = await db.query(
-        "SELECT stock_quantity FROM stock WHERE store_name = ? AND product_id = ?",
+        "SELECT stock_quantity, imei_numbers FROM stock WHERE store_name = ? AND product_id = ?",
         [store_name, product_id]
       );
-
+    
       if (
         stockResult.length === 0 ||
         stockResult[0].stock_quantity < quantity
@@ -114,7 +129,18 @@ const makesale = async (req, res) => {
           message: `Insufficient stock for product ID: ${product_id}. Sale not allowed.`,
         });
       }
+    
+      // Additional check for 'Mobile Phone' product type
+      if (product_type === "Mobile Phone") {
+        const imeiNumbersList = stockResult[0].imei_numbers?.split(",") || [];
+        if (!imeiNumbersList.includes(serial_number)) {
+          return res.status(400).json({
+            message: `Serial number ${serial_number} not found in stock for product ID: ${product_id}. Sale not allowed.`,
+          });
+        }
+      }
     }
+    
 
     // Step 4: Generate the sales_id based on store_name
     const sales_id = await generateNextId(store_name);
