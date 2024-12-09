@@ -45,7 +45,7 @@ router.post("/productcode/byID",getProductDetailsByID );// get item details by n
 
 
 router.put("/:product_id",updateitem ); //update item details 
-router.delete("/:product_name",deleteitem); //delete item
+router.delete("/:product_id",deleteitem); //delete item
 
 router.get("/getProductTypes/get",getProductTypes); //get product type list for POS
 router.get("/getProductColor/get",getProductcolor); //get product color list for POS

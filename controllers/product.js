@@ -821,11 +821,10 @@ const updateitem = async (req, res) => {
 
 //delete item
 const deleteitem = async (req, res) => {
-  const product_name = req.params.product_name;
+  const product_id = req.params.product_id;
 
   // SQL queries
-  const getProductIdQuery =
-    "SELECT product_id FROM products WHERE product_name = ?;";
+  
   const deleteStockQuery = "DELETE FROM stock WHERE product_id = ?;";
   const deleteProductQuery = "DELETE FROM products WHERE product_id = ?;";
 
@@ -833,16 +832,6 @@ const deleteitem = async (req, res) => {
   await connection.beginTransaction();
 
   try {
-    // Get product_id for the given product name
-    const [productRows] = await connection.query(getProductIdQuery, [
-      product_name,
-    ]);
-    if (productRows.length === 0) {
-      await connection.rollback();
-      return res.status(404).json({ message: "Product not found" });
-    }
-
-    const product_id = productRows[0].product_id;
 
     // Delete stock records associated with this product_id
     const [stockResult] = await connection.query(deleteStockQuery, [
@@ -899,7 +888,7 @@ const updateStockAndIMEI = async (req, res) => {
     SET stock_quantity = ?, imei_numbers = ?
     WHERE product_id = ? AND store_name = ?
   `;
-
+console.log(req.body);
   const { product_id } = req.params; // Extract product_name from the request URL
   const { product_stock, imei_number, user, category } = req.body; // Extract new stock and IMEI numbers
   const getStoreNameQuery = `SELECT s.store_name FROM users u JOIN stores s ON u.store_id = s.store_id WHERE u.user_id = ?`;
