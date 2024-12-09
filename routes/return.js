@@ -7,7 +7,8 @@ const {addReturnProduct,
     confirmReturn,
     getReturns,
     getPendingReturnsCount,
-    processReturnToStockWithNewExpense} = require("../controllers/return");
+    processReturnToStockWithNewExpense,
+    addInStockProductToReturn} = require("../controllers/return");
 
 const router = express.Router();
 
@@ -16,6 +17,9 @@ router.get('/returns', getReturns);
 router.get('/returns/pending-count', getPendingReturnsCount);
 
 router.post('/processReturn/WithExpense', processReturnToStockWithNewExpense);
+
+
+router.post("/AddReturnInStock",addInStockProductToReturn ); //add in stock product to Return
 
 
 router.post("/AddReturn",addReturnProduct ); //add Return

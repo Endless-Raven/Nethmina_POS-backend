@@ -1486,133 +1486,104 @@ const getProductDetailsByIMEIOrCode = async (req, res) => {
 const deleteProductOrIMEI = async (req, res) => {
   const { product_id, store_id, imei_number, quantity } = req.body;
   console.log(req.body);
-  // If imei_number is a string, split it into an array, otherwise, set it to an empty array.
-  const imeiNumbers =
-    typeof imei_number === "string" && imei_number.trim() !== ""
-      ? imei_number.split(",")
-      : [];
+
+  const imeiNumbers = imei_number
+    ? imei_number.split(",").map((num) => num.trim())
+    : [];
 
   try {
-    const store_name = store_id;
+    // Check if product exists in the stock table for the store
+    const [stockRows] = await db.query(
+      `SELECT stock_quantity, imei_numbers FROM stock WHERE product_id = ? AND store_name = ?`,
+      [product_id, store_id]
+    );
 
-    // Get current product type, IMEI numbers, and stock quantity from `products` table
+    if (stockRows.length === 0) {
+      return res.status(404).json({
+        message: "Product not found in the specified store.",
+      });
+    }
+
+    const { stock_quantity, imei_numbers: stockIMEIs } = stockRows[0];
+    const currentStockIMEIs = stockIMEIs ? stockIMEIs.split(",") : [];
+
+    // Check product type in the products table
     const [productRows] = await db.query(
-      `SELECT product_type, imei_number, product_stock FROM products WHERE product_id = ?`,
+      `SELECT product_type, product_stock, imei_number FROM products WHERE product_id = ?`,
       [product_id]
     );
-    const productRow = productRows[0];
 
-    if (!productRow) {
+    if (productRows.length === 0) {
       return res.status(404).json({ message: "Product not found." });
     }
 
     const {
       product_type,
-      imei_number: existingIMEI,
       product_stock,
-    } = productRow;
+      imei_number: productIMEIs,
+    } = productRows[0];
+    const currentProductIMEIs = productIMEIs ? productIMEIs.split(",") : [];
+console.log(quantity);
+    if (product_type === "Mobile Phone") {
 
-    // If the product type is not "Mobile Phone", delete the product from the store stock.
-    // If the product type is not "Mobile Phone", update the stock in the store.
-    if (product_type !== "Mobile Phone") {
-      // Reduce the stock quantity in the stock table
-      const [stockEntry] = await db.query(
-        `SELECT stock_quantity FROM stock WHERE product_id = ? AND store_name = ?`,
-        [product_id, store_name]
-      );
-      if (stockEntry) {
-        const updatedStockQuantity = stockEntry[0].stock_quantity - quantity;
-
-        if (updatedStockQuantity < 0) {
-          return res.status(400).json({
-            message: "Insufficient stock to process the reduction.",
-          });
-        }
-
-        await db.query(
-          `UPDATE stock SET stock_quantity = ?, updated_at = NOW() WHERE product_id = ? AND store_name = ?`,
-          [updatedStockQuantity, product_id, store_name]
-        );
-
-        // Update the stock in the products table
-        const newProductStock = product_stock - quantity;
-        await db.query(
-          `UPDATE products SET product_stock = ?, updated_at = NOW() WHERE product_id = ?`,
-          [newProductStock, product_id]
-        );
-
-        return res.status(200).json({
-          message: "Stock quantity updated for non-mobile phone product.",
-        });
-      } else {
-        return res.status(404).json({
-          message: "Product not found in store stock.",
+      if (imeiNumbers.length != quantity) {
+        console.log( "For mobile phones, IMEI count must match the specified quantity.")
+        return res.status(400).json({
+          message:
+            "For mobile phones, IMEI count must match the specified quantity.",
         });
       }
-    }
 
-    // Handle Mobile Phone: Get current IMEIs and stock quantity from `stock` table
-    const [stockRows] = await db.query(
-      `SELECT imei_numbers, stock_quantity FROM stock WHERE product_id = ? AND store_name = ?`,
-      [product_id, store_name]
-    );
-    const stockRow = stockRows[0];
+      // Validate IMEIs in stock
+      const invalidIMEIs = imeiNumbers.filter(
+        (imei) => !currentStockIMEIs.includes(imei)
+      );
+      if (invalidIMEIs.length > 0) {
+        return res.status(400).json({
+          message: "Some IMEI numbers are not available in the store's stock.",
+          invalidIMEIs,
+        });
+      }
 
-    if (!stockRow) {
-      return res
-        .status(404)
-        .json({ message: "Product not found in this store." });
-    }
-
-    let newStockQuantity = stockRow.stock_quantity;
-
-    // Handle IMEI number deletion
-    if (imeiNumbers.length > 0) {
-      const currentStockIMEIs = stockRow.imei_numbers
-        ? stockRow.imei_numbers.split(",")
-        : [];
+      // Update stock table
       const updatedStockIMEIs = currentStockIMEIs.filter(
         (imei) => !imeiNumbers.includes(imei)
       );
-      newStockQuantity = stockRow.stock_quantity - imeiNumbers.length;
+      const newStockQuantity = stock_quantity - imeiNumbers.length;
 
-      // Update the `stock` table with new IMEI list and quantity
       await db.query(
         `UPDATE stock SET imei_numbers = ?, stock_quantity = ?, updated_at = NOW() WHERE product_id = ? AND store_name = ?`,
-        [updatedStockIMEIs.join(","), newStockQuantity, product_id, store_name]
+        [updatedStockIMEIs.join(","), newStockQuantity, product_id, store_id]
       );
-    } else if (quantity > 0) {
-      // If no IMEI numbers are provided, reduce the stock based on the quantity.
-      newStockQuantity = stockRow.stock_quantity - quantity;
 
-      // Update the `stock` table without affecting IMEIs
-      await db.query(
-        `UPDATE stock SET stock_quantity = ?, updated_at = NOW() WHERE product_id = ? AND store_name = ?`,
-        [newStockQuantity, product_id, store_name]
-      );
-    }
-
-    // Get current IMEIs and stock from `products` table
-    let updatedProductIMEIs = existingIMEI ? existingIMEI.split(",") : [];
-    let newProductStock = product_stock;
-
-    // Handle IMEI number removal from `products` table
-    if (imeiNumbers.length > 0) {
-      updatedProductIMEIs = updatedProductIMEIs.filter(
+      // Update products table
+      const updatedProductIMEIs = currentProductIMEIs.filter(
         (imei) => !imeiNumbers.includes(imei)
       );
-      newProductStock = product_stock - imeiNumbers.length;
+      const newProductStock = product_stock - imeiNumbers.length;
 
-      // Update the `products` table with new IMEI list and stock
       await db.query(
         `UPDATE products SET imei_number = ?, product_stock = ?, updated_at = NOW() WHERE product_id = ?`,
         [updatedProductIMEIs.join(","), newProductStock, product_id]
       );
-    } else if (quantity > 0) {
-      // If no IMEI numbers were provided, reduce stock by the given quantity
-      newProductStock = product_stock - quantity;
+    } else {
+      // Handle non-Mobile Phone products
+      if (quantity > stock_quantity) {
+        return res.status(400).json({
+          message: "Insufficient stock for the specified quantity.",
+        });
+      }
 
-      // Update the `products` table with updated stock quantity
+      const newStockQuantity = stock_quantity - quantity;
+      const newProductStock = product_stock - quantity;
+
+      // Update stock table
+      await db.query(
+        `UPDATE stock SET stock_quantity = ?, updated_at = NOW() WHERE product_id = ? AND store_name = ?`,
+        [newStockQuantity, product_id, store_id]
+      );
+
+      // Update products table
       await db.query(
         `UPDATE products SET product_stock = ?, updated_at = NOW() WHERE product_id = ?`,
         [newProductStock, product_id]
@@ -1620,13 +1591,12 @@ const deleteProductOrIMEI = async (req, res) => {
     }
 
     return res.status(200).json({
-      message:
-        "Product or IMEI numbers removed successfully and stock updated.",
+      message: "Product or IMEI numbers removed successfully.",
     });
   } catch (err) {
-    console.error("Error updating/deleting product:", err.message);
+    console.error("Error processing request:", err);
     return res.status(500).json({
-      message: "Error inside server during update/delete.",
+      message: "An error occurred during the operation.",
       error: err.message,
     });
   }

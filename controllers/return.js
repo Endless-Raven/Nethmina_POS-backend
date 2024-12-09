@@ -1,6 +1,132 @@
 const db = require("../config/db");
 const { updateStockAndIMEI } = require("./product"); // Adjust the path as necessary
 
+const addInStockProductToReturn = async (req, res) => {
+  const { product_id, store_name,store_id, in_imei_number, price, description, user_id } =
+    req.body;
+    console.log( req.body);
+  const imei_number = in_imei_number;
+  const imeiNumbers = imei_number
+    ? imei_number.split(",").map((num) => num.trim())
+    : [];
+
+  try {
+    // Step 1: Check if the product exists in the stock table
+    const [stockRows] = await db.query(
+      `SELECT stock_quantity, imei_numbers FROM stock WHERE product_id = ? AND store_name = ?`,
+      [product_id, store_name]
+    );
+
+    if (stockRows.length === 0) {
+      return res.status(404).json({
+        message: "Product not found in the specified store.",
+      });
+    }
+
+    const { stock_quantity, imei_numbers: stockIMEIs } = stockRows[0];
+    const currentStockIMEIs = stockIMEIs ? stockIMEIs.split(",") : [];
+
+    // Step 2: Check the product type in the products table
+    const [productRows] = await db.query(
+      `SELECT product_type, product_stock, imei_number FROM products WHERE product_id = ?`,
+      [product_id]
+    );
+
+    if (productRows.length === 0) {
+      return res.status(404).json({ message: "Product not found." });
+    }
+
+    const {
+      product_type,
+      product_stock,
+      imei_number: productIMEIs,
+    } = productRows[0];
+    const currentProductIMEIs = productIMEIs ? productIMEIs.split(",") : [];
+
+    if (product_type === "Mobile Phone") {
+      // Step 3: Validate IMEIs for Mobile Phone
+      const invalidIMEIs = imeiNumbers.filter(
+        (imei) => !currentStockIMEIs.includes(imei)
+      );
+      if (invalidIMEIs.length > 0) {
+        return res.status(400).json({
+          message: "Some IMEI numbers are not available in the store's stock.",
+          invalidIMEIs,
+        });
+      }
+
+      // Step 4: Update the stock table
+      const updatedStockIMEIs = currentStockIMEIs.filter(
+        (imei) => !imeiNumbers.includes(imei)
+      );
+      const newStockQuantity = stock_quantity - imeiNumbers.length;
+
+      await db.query(
+        `UPDATE stock SET imei_numbers = ?, stock_quantity = ?, updated_at = NOW() WHERE product_id = ? AND store_name = ?`,
+        [updatedStockIMEIs.join(","), newStockQuantity, product_id, store_name]
+      );
+
+      // Step 5: Update the products table
+      const updatedProductIMEIs = currentProductIMEIs.filter(
+        (imei) => !imeiNumbers.includes(imei)
+      );
+      const newProductStock = product_stock - imeiNumbers.length;
+
+      await db.query(
+        `DELETE FROM products WHERE product_id = ? AND product_stock <= 0`,
+        [product_id]
+      );
+
+      // If stock still exists, update IMEI numbers
+      if (newProductStock > 0) {
+        await db.query(
+          `UPDATE products SET imei_number = ?, product_stock = ?, updated_at = NOW() WHERE product_id = ?`,
+          [updatedProductIMEIs.join(","), newProductStock, product_id]
+        );
+      }
+    } else {
+      // Step 6: Handle Non-Mobile Phone Products
+      if (1 > stock_quantity) {
+        return res.status(400).json({
+          message: "Insufficient stock for the specified qty.",
+        });
+      }
+
+      const newStockQuantity = stock_quantity - 1;
+      const newProductStock = product_stock - 1;
+
+      // Update stock table
+      await db.query(
+        `UPDATE stock SET stock_quantity = ?, updated_at = NOW() WHERE product_id = ? AND store_name = ?`,
+        [newStockQuantity, product_id, store_name]
+      );
+
+      // Update products table
+      await db.query(
+        `UPDATE products SET product_stock = ?, updated_at = NOW() WHERE product_id = ?`,
+        [newProductStock, product_id]
+      );
+    }
+
+    // Step 7: Add the product to the return table
+    await db.query(
+      `INSERT INTO product_return (user_id, store_id, product_id, amount, status, description, imei_number, in_stock, created_at, updated_at)
+       VALUES (?, ?, ?, ?, "pending", ?, ?, TRUE, NOW(), NOW())`,
+      [user_id, store_id, product_id, price, description, imei_number]
+    );
+
+    return res.status(200).json({
+      message: "Product return added successfully.",
+    });
+  } catch (err) {
+    console.error("Error processing return:", err.message);
+    return res.status(500).json({
+      message: "An error occurred during the product return.",
+      error: err.message,
+    });
+  }
+};
+
 const addReturnProduct = async (req, res) => {
   const { imei_number, amount, description, user_id, store_id } = req.body;
 
@@ -409,4 +535,5 @@ module.exports = {
   getReturns,
   getPendingReturnsCount,
   processReturnToStockWithNewExpense,
+  addInStockProductToReturn,
 };
