@@ -572,7 +572,7 @@ const getSalesItemsByDate = async (req, res) => {
 
       // Increment the total sales for the store
       storesSales[storeName].total_sales += parseFloat(
-        item.item_price * item.item_quantity - item.discount
+        item.item_price * item.item_quantity 
       );
     });
 
