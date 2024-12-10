@@ -4,17 +4,24 @@ const nodemailer = require("nodemailer");
 
 //add item
 const additem = async (req, res) => {
-  console.log("Request body", req.body);
-
   // Step 0: Check if the product_name exists in the request body
   if (!req.body.product_name) {
     return res.status(400).json({ message: "Product name is required." });
   }
-
+  const checkProductcodeQuery = `
+  SELECT imei_number, product_stock, product_id, warranty_period 
+  FROM products 
+  WHERE product_code = ?
+`;
   const checkProductQuery = `SELECT imei_number, product_stock, product_id, warranty_period FROM products WHERE product_name = ?`;
   const getStoreNameQuery = `SELECT s.store_name FROM users u JOIN stores s ON u.store_id = s.store_id WHERE u.user_id = ?`;
 
   try {
+      // Step 2: Check if the product_code already exists
+      const [existingProduct] = await db.query(checkProductcodeQuery, [req.body.product_code]);
+      if (existingProduct.length > 0) {
+        throw new Error("Product code is already in use.");
+      }
     const [store] = await db.query(getStoreNameQuery, [req.body.user]);
 
     if (store.length === 0) {
@@ -63,15 +70,23 @@ const additem = async (req, res) => {
       newImeiNumbers.join(","),
     ]);
 
-    console.log("Inserted Product ID:", insertedProduct.insertId);
-
     return res.status(200).json({
       message:
         "New product added successfully and stock updated for the store.",
     });
   } catch (err) {
-    console.error("Error adding Product:", err.message);
-    return res.status(500).json({ message: "Error inside server.", err });
+        // Handle known errors differently
+        if (err.message === "Product code is already in use.") {
+          return res.status(400).json({ message: err.message }); // Return specific error message
+        }
+    
+        // Handle generic errors
+        console.error("Error adding Product:", err.message);
+        return res.status(500).json({ 
+          message: "Error inside server.", 
+          error: err.message 
+        });
+    
   }
 };
 
@@ -80,7 +95,6 @@ const getProductTypes = async (req, res) => {
   const sql = "SELECT DISTINCT product_type FROM products";
 
   try {
-    console.log("Fetching product types...");
     const [rows] = await db.query(sql);
 
     // Map the result to an array of product types
@@ -101,8 +115,24 @@ const getProductcolor = async (req, res) => {
 
     // Map the result to an array of product types
     const color = rows.map((row) => row.color);
-    console.log(`color ${color}`);
     return res.json(color);
+  } catch (err) {
+    // console.error("Error fetching product types:", err.message);
+    return res.status(500).json({ message: "Error inside server", err });
+  }
+};
+
+
+// Get all distinct product types as an array
+const getProductCapacity = async (req, res) => {
+  const sql = "SELECT DISTINCT capacity FROM products";
+
+  try {
+    const [rows] = await db.query(sql);
+
+    // Map the result to an array of product types
+    const capacity = rows.map((row) => row.capacity);
+    return res.json(capacity);
   } catch (err) {
     // console.error("Error fetching product types:", err.message);
     return res.status(500).json({ message: "Error inside server", err });
@@ -115,7 +145,6 @@ const getBrandsByProductType = async (req, res) => {
   const sql = "SELECT DISTINCT brand_name FROM products WHERE product_type = ?";
 
   try {
-    console.log(`Fetching brand names for product type: ${product_type}...`);
     const [rows] = await db.query(sql, [product_type]);
 
     // Map the result to an array of brand names
@@ -159,7 +188,6 @@ const getFilteredProductDetails = async (req, res) => {
       }
     }
 
-    console.log("Fetching all product details...");
     // Fetch all products and stock data from the database
     const [rows] = await db.query(`
       SELECT p.*, s.store_name, s.stock_quantity, s.imei_numbers
@@ -169,13 +197,19 @@ const getFilteredProductDetails = async (req, res) => {
 
     // Apply .filter() based on conditions, including the new columns
     const filteredProducts = rows.filter((product) => {
+      const matchesProductNameOrCode =
+      (!product_name ||
+        product_name === "All" ||
+        (product.product_name &&
+          product.product_name
+            .toLowerCase()
+            .includes(product_name.toLowerCase())) ||
+        (product.product_code &&
+          product.product_code
+            .toLowerCase()
+            .includes(product_name.toLowerCase())));
       return (
-        (!product_name ||
-          product_name === "All" ||
-          (product.product_name &&
-            product.product_name
-              .toLowerCase()
-              .includes(product_name.toLowerCase()))) &&
+        matchesProductNameOrCode &&
         (!resolvedStoreName ||
           resolvedStoreName === "All" ||
           (product.store_name &&
@@ -208,8 +242,6 @@ const getFilteredProductDetails = async (req, res) => {
             product.grade.toLowerCase().includes(grade.toLowerCase())))
       );
     });
-    console.log(`Applying filters...${grade}`);
-    console.log("Filtered products:", filteredProducts);
     return res.json(filteredProducts);
   } catch (err) {
     console.error("Error fetching product details:", err.message);
@@ -221,25 +253,36 @@ const getFilteredProductDetails = async (req, res) => {
 const getProductforMangerinventory = async (req, res) => {
   const { brand_name, product_type, store_id } = req.query; // Get brand_name, product_type, and store_id from request query parameters
 
-  const productQuery = `
-    SELECT 
-      products.*,
-      GROUP_CONCAT(sales_items.imei_number) AS imei_numbers
-    FROM products
-    LEFT JOIN sales_items ON products.product_id = sales_items.product_id
-    WHERE products.brand_name = ? AND products.product_type = ?
-    GROUP BY products.product_id;`;
-
   try {
-    console.log(
-      `Fetching products for brand: ${brand_name} and product type: ${product_type}...`
-    );
+    // Build dynamic conditions for brand_name and product_type
+    let whereConditions = [];
+    let queryParams = [];
+
+    if (brand_name && brand_name !== "All") {
+      whereConditions.push(`products.brand_name = ?`);
+      queryParams.push(brand_name);
+    }
+    if (product_type && product_type !== "All") {
+      whereConditions.push(`products.product_type = ?`);
+      queryParams.push(product_type);
+    }
+
+    // Construct the WHERE clause dynamically
+    const whereClause = whereConditions.length > 0
+      ? `WHERE ${whereConditions.join(" AND ")}`
+      : "";
+
+    const productQuery = `
+      SELECT 
+        products.*,
+        GROUP_CONCAT(sales_items.imei_number) AS imei_numbers
+      FROM products
+      LEFT JOIN sales_items ON products.product_id = sales_items.product_id
+      ${whereClause}
+      GROUP BY products.product_id;`;
 
     // Query products and IMEI numbers
-    const [productRows] = await db.query(productQuery, [
-      brand_name,
-      product_type,
-    ]);
+    const [productRows] = await db.query(productQuery, queryParams);
 
     // Query to get the store name
     const storeQuery = `SELECT store_name FROM stores WHERE store_id = ?;`;
@@ -277,6 +320,7 @@ const getProductforMangerinventory = async (req, res) => {
   }
 };
 
+
 // Get all products by brand name and product type
 const getProductModelsByBrandName = async (req, res) => {
   const { brand_name, product_type } = req.query; // Get brand_name and product_type from request query parameters
@@ -290,9 +334,6 @@ const getProductModelsByBrandName = async (req, res) => {
     GROUP BY products.product_id;`;
 
   try {
-    console.log(
-      `Fetching products for brand: ${brand_name} and product type: ${product_type}...`
-    );
     const [rows] = await db.query(sql, [brand_name, product_type]);
 
     // Process the rows to convert the concatenated IMEI numbers into an array
@@ -315,6 +356,66 @@ const getProductModelsByBrandName = async (req, res) => {
     return res.status(500).json({ message: "Error inside server", err });
   }
 };
+
+
+
+const getProductModelsByBrandNameStoreName = async (req, res) => {
+  const { brand_name, product_type, store_name } = req.query; // Get parameters from query
+  
+  // SQL query to get product IDs for the store
+  const productIdsSql = `
+    SELECT product_id 
+    FROM stock 
+    INNER JOIN stores ON stock.store_name = stores.store_name
+    WHERE stores.store_name = ?;
+  `;
+
+  // SQL query to fetch product details filtered by product IDs, brand_name, and product_type
+  const productsSql = `
+    SELECT 
+      products.*, 
+      GROUP_CONCAT(sales_items.imei_number) AS imei_numbers
+    FROM products
+    LEFT JOIN sales_items ON products.product_id = sales_items.product_id
+    WHERE products.product_id IN (?) 
+      AND products.brand_name = ? 
+      AND products.product_type = ?
+    GROUP BY products.product_id;
+  `;
+
+  try {
+    // Step 1: Fetch product IDs for the specified store
+    const [productRows] = await db.query(productIdsSql, [store_name]);
+    const productIds = productRows.map(row => row.product_id);
+
+    if (productIds.length === 0) {
+      // If no product IDs are found for the store, return an empty response
+      return res.json([]);
+    }
+
+    // Step 2: Fetch product details using the product IDs, brand_name, and product_type
+    const [rows] = await db.query(productsSql, [productIds, brand_name, product_type]);
+
+    // Step 3: Process the rows to convert concatenated IMEI numbers into an array
+    const processedRows = rows.map(row => {
+      const imeiArray = row.imei_numbers ? row.imei_numbers.split(",") : [];
+      const { imei_numbers, ...rest } = row; // Remove imei_numbers field
+
+      return {
+        ...rest,
+        imei_numbers: imeiArray, // Replace with array format
+      };
+    });
+
+    // Step 4: Return processed data
+    return res.json(processedRows);
+  } catch (err) {
+    console.error("Error fetching products:", err.message);
+    return res.status(500).json({ message: "Error inside server", err });
+  }
+};
+
+
 
 const searchProductsByName = async (req, res) => {
   const { searchText } = req.query; // Get the search text from the query parameters
@@ -349,7 +450,6 @@ const searchProductsByName = async (req, res) => {
 
 const getImeiNumbers = async (req, res) => {
   const { shop, Product_id } = req.body; // Get the store name and product ID from the request body
-  console.log(`dsf${Product_id}`);
   const sql = `
     SELECT imei_numbers 
     FROM stock 
@@ -362,11 +462,9 @@ const getImeiNumbers = async (req, res) => {
 
     // Check if any stock entries are found
     if (rows.length === 0) {
-      return res
-        .status(404)
-        .json({
-          message: "No IMEI numbers found for the given store and product ID.",
-        });
+      return res.status(404).json({
+        message: "No IMEI numbers found for the given store and product ID.",
+      });
     }
 
     // Map the result to extract IMEI numbers
@@ -408,18 +506,15 @@ const searchProductsByType = async (req, res) => {
     return res.json(productTypes);
   } catch (err) {
     console.error("Error fetching product types:", err.message);
-    return res
-      .status(500)
-      .json({
-        message: "Error inside server during product type search.",
-        err,
-      });
+    return res.status(500).json({
+      message: "Error inside server during product type search.",
+      err,
+    });
   }
 };
 
 const searchProductsByModel = async (req, res) => {
   const { searchText } = req.query; // Get the search text from the query parameters
-  console.log(searchText);
 
   if (!searchText) {
     return res.status(400).json({ message: "Search text is required." });
@@ -444,18 +539,15 @@ const searchProductsByModel = async (req, res) => {
     return res.json(productModels);
   } catch (err) {
     console.error("Error fetching product models:", err.message);
-    return res
-      .status(500)
-      .json({
-        message: "Error inside server during product model search.",
-        err,
-      });
+    return res.status(500).json({
+      message: "Error inside server during product model search.",
+      err,
+    });
   }
 };
 
 const searchProductsByBrand = async (req, res) => {
   const { searchText } = req.query; // Get the search text from the query parameters
-  console.log(searchText);
   if (!searchText) {
     return res.status(400).json({ message: "Search text is required." });
   }
@@ -490,11 +582,33 @@ const getitems = async (req, res) => {
   const sql = "SELECT * FROM products";
 
   try {
-    console.log("get products");
     const [rows] = await db.query(sql);
     return res.json(rows);
   } catch (err) {
     console.error("Error fetching products:", err.message);
+    return res.status(500).json({ message: "Error inside server", err });
+  }
+};
+
+//get item
+const getproductbycode = async (req, res) => {
+  const product_code = req.params.product_code;
+  console.log(product_code);
+
+  const sql = `
+        SELECT *
+        FROM products
+        WHERE product_code = ?`;
+
+  try {
+    const [rows] = await db.query(sql, [product_code ]); // Pass the product ID as a parameter to the query
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Product not found." }); // Handle case where no product is found
+    }
+    return res.json(rows[0]); // Return the found product
+  } catch (err) {
+    console.error("Error fetching product:", err.message);
     return res.status(500).json({ message: "Error inside server", err });
   }
 };
@@ -509,18 +623,46 @@ const getitembyid = async (req, res) => {
         WHERE product_id = ?`;
 
   try {
-    console.log("Fetching product by ID:", product_id);
-
     const [rows] = await db.query(sql, [product_id]); // Pass the product ID as a parameter to the query
 
     if (rows.length === 0) {
       return res.status(404).json({ message: "Product not found." }); // Handle case where no product is found
     }
-    console.log(rows);
     return res.json(rows[0]); // Return the found product
   } catch (err) {
     console.error("Error fetching product:", err.message);
     return res.status(500).json({ message: "Error inside server", err });
+  }
+};
+
+const getProductDetailsByID = async (req, res) => {
+  const { product_id } = req.body;
+
+  if (!product_id) {
+    return res.status(400).json({ message: "Product ID is required." });
+  }
+
+  try {
+    // Query to get product details using product_id
+    const productQuery = `
+      SELECT product_code FROM products
+      WHERE product_id = ?;
+    `;
+
+    const [product_code] = await db.query(productQuery, [product_id]);
+
+    if (product_code  .length === 0) {
+      return res.status(404).json({ message: "Product not found." });
+    }
+
+    // Return product details
+    return res.status(200).json(product_code[0]);
+  } catch (err) {
+    console.error("Error fetching product details:", err.message);
+    return res.status(500).json({
+      message: "Error inside server during fetching product details.",
+      err,
+    });
   }
 };
 
@@ -533,15 +675,11 @@ const getitembyname = async (req, res) => {
         WHERE product_name LIKE ?`;
 
   try {
-    console.log("Fetching product by name:", product_name);
-
     const [rows] = await db.query(sql, `%${product_name}%`); // Pass the product name as a parameter to the query
 
     if (rows.length === 0) {
       return res.status(404).json({ message: "Product not found." }); // Handle case where no product is found
     }
-
-    console.log(rows);
     return res.json(rows); // Return the found product
   } catch (err) {
     console.error("Error fetching product:", err.message);
@@ -549,37 +687,78 @@ const getitembyname = async (req, res) => {
   }
 };
 
-//get item by code
-const getitembycode = async (req, res) => {
-  const product_code = req.params.product_code;
+const getitembetails = async (req, res) => {
+  const product_name = req.params.product_name;
+
+  const sql = `
+  SELECT product_id, product_name ,color,capacity,grade
+        FROM products
+        WHERE product_name LIKE ?`;
 
   try {
-    let productQuery = "";
-    let queryParams = product_code;
+    const [rows] = await db.query(sql, `%${product_name}%`); // Pass the product name as a parameter to the query
 
-    // Run the first query based on product code
-    productQuery = `
-      SELECT * FROM products
-      WHERE product_code = ?;
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Product not found." }); // Handle case where no product is found
+    }
+    return res.json(rows); // Return the found product
+  } catch (err) {
+    console.error("Error fetching product:", err.message);
+    return res.status(500).json({ message: "Error inside server", err });
+  }
+};
+
+
+
+
+
+//get item by code
+const getitembycode = async (req, res) => {
+  const { product_code, store_name } = req.params; // Assume store_name is passed as a parameter
+  try {
+    // Step 1: Get product IDs for the specified store
+    const productIdsQuery = `
+      SELECT product_id 
+      FROM stock 
+      INNER JOIN stores ON stock.store_name = stores.store_name
+      WHERE stores.store_name = ?;
     `;
 
-    let [productRows] = await db.query(productQuery, [queryParams]);
+    const [productRows] = await db.query(productIdsQuery, [store_name]);
+    const productIds = productRows.map(row => row.product_id);
 
-    // If no data is found with product code, try the IMEI number query
-    if (productRows.length === 0) {
-      productQuery = `
-        SELECT * FROM products
-        WHERE FIND_IN_SET(?, imei_number) > 0;
-      `;
-      [productRows] = await db.query(productQuery, [queryParams]);
+    if (productIds.length === 0) {
+      // No products found for the store
+      return res.status(404).json({ message: "No products found for this store." });
     }
 
-    if (productRows.length === 0) {
+    // Step 2: Query for product details using product code or IMEI number
+    let productQuery = `
+      SELECT * 
+      FROM products 
+      WHERE product_id IN (?) 
+        AND product_code = ?;
+    `;
+    let [productDetails] = await db.query(productQuery, [productIds, product_code]);
+
+    // If no products match the product code, search for IMEI number
+    if (productDetails.length === 0) {
+      productQuery = `
+        SELECT * 
+        FROM products 
+        WHERE product_id IN (?) 
+          AND FIND_IN_SET(?, imei_number) > 0;
+      `;
+      [productDetails] = await db.query(productQuery, [productIds, product_code]);
+    }
+
+    if (productDetails.length === 0) {
+      // If no data is found, return a 404 response
       return res.status(404).json({ message: "Product not found." });
     }
 
-    // Return product details
-    return res.status(200).json(productRows[0]);
+    // Step 3: Return the product details
+    return res.status(200).json(productDetails[0]);
   } catch (err) {
     console.error("Error fetching product details:", err.message);
     return res.status(500).json({
@@ -591,11 +770,10 @@ const getitembycode = async (req, res) => {
 
 //update item
 const updateitem = async (req, res) => {
-  console.log("Request body:", req.body); // Log the request body
-
   const sql = `
     UPDATE products 
-    SET product_name = ?, 
+    SET product_name = ?,
+        product_code = ?,
         product_price = ?, 
         warranty_period = ?, 
         product_type = ?, 
@@ -613,6 +791,7 @@ const updateitem = async (req, res) => {
 
   const values = [
     req.body.product_name,
+    req.body.product_code,
     req.body.product_price,
     req.body.warranty_period,
     req.body.product_type,
@@ -642,11 +821,10 @@ const updateitem = async (req, res) => {
 
 //delete item
 const deleteitem = async (req, res) => {
-  const product_name = req.params.product_name;
+  const product_id = req.params.product_id;
 
   // SQL queries
-  const getProductIdQuery =
-    "SELECT product_id FROM products WHERE product_name = ?;";
+  
   const deleteStockQuery = "DELETE FROM stock WHERE product_id = ?;";
   const deleteProductQuery = "DELETE FROM products WHERE product_id = ?;";
 
@@ -654,18 +832,6 @@ const deleteitem = async (req, res) => {
   await connection.beginTransaction();
 
   try {
-    console.log("Deleting product and its stock:", product_name);
-
-    // Get product_id for the given product name
-    const [productRows] = await connection.query(getProductIdQuery, [
-      product_name,
-    ]);
-    if (productRows.length === 0) {
-      await connection.rollback();
-      return res.status(404).json({ message: "Product not found" });
-    }
-
-    const product_id = productRows[0].product_id;
 
     // Delete stock records associated with this product_id
     const [stockResult] = await connection.query(deleteStockQuery, [
@@ -697,8 +863,6 @@ const deleteitem = async (req, res) => {
 };
 
 const updateStockAndIMEI = async (req, res) => {
-  console.log("Request body:", req.body); // Log the request body
-
   // SQL queries for fetching and updating the product in `products` table
   const sqlSelectProduct = `
     SELECT product_stock, imei_number, product_id
@@ -724,7 +888,7 @@ const updateStockAndIMEI = async (req, res) => {
     SET stock_quantity = ?, imei_numbers = ?
     WHERE product_id = ? AND store_name = ?
   `;
-
+console.log(req.body);
   const { product_id } = req.params; // Extract product_name from the request URL
   const { product_stock, imei_number, user, category } = req.body; // Extract new stock and IMEI numbers
   const getStoreNameQuery = `SELECT s.store_name FROM users u JOIN stores s ON u.store_id = s.store_id WHERE u.user_id = ?`;
@@ -761,11 +925,9 @@ const updateStockAndIMEI = async (req, res) => {
         imei_number.length === 0 ||
         imei_number.includes(null)
       ) {
-        return res
-          .status(400)
-          .json({
-            message: "IMEI number is required for Mobile Phone category.",
-          });
+        return res.status(400).json({
+          message: "IMEI number is required for Mobile Phone category.",
+        });
       }
       newIMEINumbers = imei_number.filter((imei) => imei); // Filter out null or invalid values
       updatedIMEINumbers = [...currentIMEINumbers, ...newIMEINumbers].join(",");
@@ -818,21 +980,66 @@ const updateStockAndIMEI = async (req, res) => {
       ]);
     }
 
-    return res
-      .status(200)
-      .json({
-        message:
-          "Stock and IMEI numbers updated successfully in both products and stock tables.",
-      });
+    return res.status(200).json({
+      message:
+        "Stock and IMEI numbers updated successfully in both products and stock tables.",
+    });
   } catch (err) {
     console.error("Error updating Product and Stock:", err.message); // Log any error messages
     return res.status(500).json({ message: "Error inside server.", err });
   }
 };
 
+
+const checkimeiInStock = async (req, res) => {
+  const { product_id, store_id, product_serial } = req.body;
+
+  try {
+    // Validate request parameters
+    if (!product_id || !store_id || !product_serial) {
+      return res.status(400).json({ message: "Missing required fields." });
+    }
+
+    // Query to get stock data
+    const [stockResult] = await db.query(
+      "SELECT imei_numbers FROM stock WHERE product_id = ? AND store_name = ?",
+      [product_id, store_id]
+    );
+
+    if (stockResult.length === 0) {
+      return res.status(404).json({
+        message: "Stock not found for the given product ID and store ID.",
+      });
+    }
+
+    // Check if the serial number exists in the imei_numbers list
+    const imeiNumbersList = stockResult[0].imei_numbers?.split(",") || [];
+    const isSerialFound = imeiNumbersList.includes(product_serial);
+
+    if (isSerialFound) {
+      return res.status(200).json({
+        message: "Serial number found in stock.",
+      });
+    } else {
+     
+      return res.status(404).json({
+        message: "Serial number not found in stock.",
+      });
+    }
+  } catch (error) {
+    console.error("Error checking serial number:", error);
+    res.status(500).json({ message: "Internal server error." });
+  }
+
+}
+
+
+
+
+
+
 const getProductDetails = async (req, res) => {
   const { imei_number } = req.query;
-  console.log(imei_number);
 
   if (!imei_number) {
     return res
@@ -845,6 +1052,9 @@ const getProductDetails = async (req, res) => {
     const productQuery = `
       SELECT 
         p.product_id,
+        p.color,
+        p.capacity,
+        p.grade,
         p.product_name,
         p.product_price,
         p.product_type,
@@ -920,12 +1130,10 @@ const getProductDetails = async (req, res) => {
     return res.status(404).json({ message: "Product not found" });
   } catch (err) {
     console.error("Error fetching product details:", err.message);
-    return res
-      .status(500)
-      .json({
-        message: "Error inside server while fetching product details",
-        err,
-      });
+    return res.status(500).json({
+      message: "Error inside server while fetching product details",
+      err,
+    });
   }
 };
 
@@ -958,7 +1166,6 @@ const sendLowStockEmail = async () => {
     const [lowStockItems] = await db.query(lowStockQuery);
 
     if (lowStockItems.length === 0) {
-      console.log("No low stock items found.");
       return;
     }
 
@@ -980,7 +1187,6 @@ const sendLowStockEmail = async () => {
 
     // Send the email
     await transporter.sendMail(mailOptions);
-    console.log("Low stock email sent successfully!");
   } catch (error) {
     console.error("Error sending low stock email:", error);
   }
@@ -988,7 +1194,6 @@ const sendLowStockEmail = async () => {
 
 // Schedule the task to run daily at 9:00 AM
 cron.schedule("00 23 * * *", () => {
-  console.log("Checking low stock items and sending email...");
   sendLowStockEmail();
 });
 
@@ -1013,6 +1218,12 @@ module.exports = {
   getProductforMangerinventory,
   getProductcolor,
   getImeiNumbers,
+  getProductCapacity,
+  getitembetails,
+  checkimeiInStock,
+  getProductModelsByBrandNameStoreName,
+  getProductDetailsByID,
+  getproductbycode,
 };
 
 /*

@@ -2,8 +2,6 @@ const db = require("../config/db");
 
 //Add Sotre
 const addStore = async (req, res) => {
-  console.log("Request body", req.body);
-
   const sql = ` INSERT INTO stores ( store_name , store_address  , store_phone_number )
      VALUES (?, ? , ?)`;
 
@@ -28,7 +26,6 @@ const getStore = async (req, res) => {
   const sql = "SELECT * FROM stores";
 
   try {
-    console.log("get stores");
     const [rows] = await db.query(sql);
     return res.json(rows);
   } catch (err) {
@@ -47,8 +44,6 @@ const getstorenamebyid = async (req, res) => {
         WHERE store_id = ?`;
 
   try {
-    console.log("Fetching store by ID:", store_id);
-
     const [rows] = await db.query(sql, [store_id]); // Pass the store ID as a parameter to the query
 
     if (rows.length === 0) {
@@ -72,8 +67,6 @@ const getstorebyname = async (req, res) => {
         WHERE store_name = ?`;
 
   try {
-    console.log("Fetching product by ID:", store_name);
-
     const [rows] = await db.query(sql, [store_name]); // Pass the product ID as a parameter to the query
 
     if (rows.length === 0) {
@@ -138,7 +131,7 @@ const getstorenames = async (req, res) => {
 
 // Update store details
 const updateStoreById = async (req, res) => {
-  const { store_address, store_phone_number,store_id } = req.body; // Destructure the request body
+  const { store_address, store_phone_number, store_id } = req.body; // Destructure the request body
   const sql = `
       UPDATE stores
       SET  store_address = ?, store_phone_number = ?
@@ -151,7 +144,6 @@ const updateStoreById = async (req, res) => {
       store_phone_number,
       store_id,
     ]);
-console.log(result)
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: "Store not found." });
     }

@@ -6,7 +6,6 @@ const getUsers = async (req, res) => {
   const sql = "SELECT * FROM users";
 
   try {
-    console.log("get users");
     const [rows] = await db.query(sql);
     return res.json(rows);
   } catch (err) {
@@ -21,7 +20,6 @@ const getUserById = async (req, res) => {
   const sql = "SELECT * FROM users WHERE user_id = ?";
 
   try {
-    console.log(`Fetching user with ID: ${id}`);
     const [rows] = await db.query(sql, [id]);
 
     if (rows.length === 0) {
@@ -41,7 +39,6 @@ const getUsersByRole = async (req, res) => {
   const sql = "SELECT * FROM users WHERE role = ?";
 
   try {
-    console.log(`Fetching users with role: ${role}`);
     const [rows] = await db.query(sql, [role]);
 
     if (rows.length === 0) {
@@ -69,7 +66,6 @@ const getUsersByStoreName = async (req, res) => {
     `;
 
   try {
-    console.log(`Fetching users from store: ${store_name}`);
     const [rows] = await db.query(sql, [store_name]);
 
     if (rows.length === 0) {
@@ -89,7 +85,19 @@ const getUsersByStoreName = async (req, res) => {
 const signIn = async (req, res) => {
   const { username, password } = req.body;
 
-  const sql = `SELECT * FROM users WHERE username = ?`;
+  const sql = `
+  SELECT 
+    users.*, 
+    stores.store_name 
+  FROM 
+    users 
+  LEFT JOIN 
+    stores 
+  ON 
+    users.store_id = stores.store_id 
+  WHERE 
+    users.username = ?;
+`;
 
   try {
     const [rows] = await db.query(sql, [username]);
@@ -140,19 +148,13 @@ const addUser = async (req, res) => {
     ]);
 
     // If the role is "cashier", also insert into the cashiers table
-   
-      const insertCashierQuery = `
+
+    const insertCashierQuery = `
         INSERT INTO cashiers (cashier_name, cashier_email, cashier_phone_number, store_id, created_at)
         VALUES (?, ?, ?, ?, NOW())
       `;
 
-      await db.query(insertCashierQuery, [
-        username,
-        username, 
-        phone,
-        store_id,
-      ]);
-  
+    await db.query(insertCashierQuery, [username, username, phone, store_id]);
 
     res.json({ message: "Employee account added successfully" });
   } catch (err) {
@@ -161,7 +163,6 @@ const addUser = async (req, res) => {
   }
 };
 
-
 //update a users
 // Route to update an employee's information
 const updateUser = async (req, res) => {
@@ -169,7 +170,9 @@ const updateUser = async (req, res) => {
 
   // Ensure required fields are present
   if (!user_id || !username || !role || !phone || !store_id) {
-    return res.status(400).json({ message: "All fields are required to update an employee." });
+    return res
+      .status(400)
+      .json({ message: "All fields are required to update an employee." });
   }
 
   // SQL query to update employee details in users table
@@ -181,7 +184,13 @@ const updateUser = async (req, res) => {
 
   try {
     // Execute the query with the provided values
-    const [result] = await db.query(updateEmployeeQuery, [username, role, phone, store_id, user_id]);
+    const [result] = await db.query(updateEmployeeQuery, [
+      username,
+      role,
+      phone,
+      store_id,
+      user_id,
+    ]);
 
     // Check if any rows were affected (i.e., if the update was successful)
     if (result.affectedRows === 0) {
