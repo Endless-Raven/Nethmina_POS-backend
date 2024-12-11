@@ -1094,6 +1094,9 @@ const getProductDetails = async (req, res) => {
         SELECT 
           p.product_id,
           p.product_name,
+          p.color,
+          p.capacity,
+          p.grade,
           p.product_price,
           p.product_type,
           p.brand_name,
@@ -1121,6 +1124,9 @@ const getProductDetails = async (req, res) => {
   SELECT 
     p.product_id,
     p.product_name,
+    p.color,
+    p.capacity,
+    p.grade,
     p.product_price,
     p.product_type,
     p.brand_name,
@@ -1137,6 +1143,9 @@ const getProductDetails = async (req, res) => {
   SELECT 
     p.product_id,
     p.product_name,
+    p.color,
+    p.capacity,
+    p.grade,
     p.product_price,
     p.product_type,
     p.brand_name,
