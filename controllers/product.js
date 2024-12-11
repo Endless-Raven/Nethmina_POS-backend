@@ -192,7 +192,7 @@ const getFilteredProductDetails = async (req, res) => {
     const [rows] = await db.query(`
       SELECT p.*, s.store_name, s.stock_quantity, s.imei_numbers
       FROM products p 
-      JOIN stock s ON p.product_id = s.product_id
+      JOIN stock s ON p.product_id = s.product_id LIMIT 50
     `);
 
     // Apply .filter() based on conditions, including the new columns
@@ -280,7 +280,7 @@ const getProductforMangerinventory = async (req, res) => {
       FROM products
       LEFT JOIN sales_items ON products.product_id = sales_items.product_id
       ${whereClause}
-      GROUP BY products.product_id;`;
+      GROUP BY products.product_id LIMIT 50;`;
 
     // Query products and IMEI numbers
     const [productRows] = await db.query(productQuery, queryParams);
