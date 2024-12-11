@@ -138,6 +138,22 @@ const addReturnProduct = async (req, res) => {
   const { imei_number, amount, description, user_id, store_id } = req.body;
 
   try {
+    // Step 1: Check if the product with the given imei_number is already in return with 'pending' status
+    const checkReturnQuery = `
+      SELECT * 
+      FROM product_return 
+      WHERE imei_number = ? AND status = 'pending'
+    `;
+    const [existingReturn] = await db.query(checkReturnQuery, [imei_number]);
+
+    if (existingReturn.length > 0) {
+      return res
+        .status(400)
+        .json({
+          message: "Product is already in return with a pending status.",
+        });
+    }
+
     // Step 1: Get sale_id and product_id from sales_items using imei_number
     const salesItemQuery = `
         SELECT sale_id, product_id, item_price
@@ -278,7 +294,7 @@ const processinStockReturnToStock = async (req, res) => {
 
     const { user_id, store_id, product_id, amount, imei_number } =
       returnDetails[0];
-      console.log(returnDetails[0]);
+    console.log(returnDetails[0]);
 
     const product_categoryQury = `
       SELECT product_type
@@ -290,9 +306,11 @@ const processinStockReturnToStock = async (req, res) => {
 
     // Check if a category was found
     if (!categoryResult || categoryResult.length === 0) {
-      return res.status(404).json({ message: "Category not found for the product." });
+      return res
+        .status(404)
+        .json({ message: "Category not found for the product." });
     }
-  
+
     // Extract the `product_type` value (e.g., 'Mobile Phone')
     const productCategory = categoryResult[0].product_type;
     try {
@@ -646,15 +664,17 @@ const inStockReturnToStockWithNewExpense = async (req, res) => {
     WHERE product_id = ?
   `;
 
-  const [categoryResult] = await db.query(product_categoryQury, [product_id]);
+    const [categoryResult] = await db.query(product_categoryQury, [product_id]);
 
-  // Check if a category was found
-  if (!categoryResult || categoryResult.length === 0) {
-    return res.status(404).json({ message: "Category not found for the product." });
-  }
+    // Check if a category was found
+    if (!categoryResult || categoryResult.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "Category not found for the product." });
+    }
 
-  // Extract the `product_type` value (e.g., 'Mobile Phone')
-  const productCategory = categoryResult[0].product_type;
+    // Extract the `product_type` value (e.g., 'Mobile Phone')
+    const productCategory = categoryResult[0].product_type;
     try {
       const stockUpdateReq = {
         params: { product_id },
@@ -716,5 +736,5 @@ module.exports = {
   addInStockProductToReturn,
   processinStockReturnToStock,
   confirmInStockReturn,
-  inStockReturnToStockWithNewExpense
+  inStockReturnToStockWithNewExpense,
 };
