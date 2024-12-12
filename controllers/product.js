@@ -192,7 +192,8 @@ const getFilteredProductDetails = async (req, res) => {
     const [rows] = await db.query(`
       SELECT p.*, s.store_name, s.stock_quantity, s.imei_numbers
       FROM products p 
-      JOIN stock s ON p.product_id = s.product_id LIMIT 50
+      JOIN stock s ON p.product_id = s.product_id
+      ORDER BY p.created_at DESC
     `);
 
     // Apply .filter() based on conditions, including the new columns
@@ -242,7 +243,7 @@ const getFilteredProductDetails = async (req, res) => {
             product.grade.toLowerCase().includes(grade.toLowerCase())))
       );
     });
-    return res.json(filteredProducts);
+    return res.json(filteredProducts.slice(0, 20));
   } catch (err) {
     console.error("Error fetching product details:", err.message);
     return res.status(500).json({ message: "Error inside server", err });
@@ -251,7 +252,7 @@ const getFilteredProductDetails = async (req, res) => {
 
 // Get all products by brand name and product type
 const getProductforMangerinventory = async (req, res) => {
-  const { brand_name, product_type, store_id } = req.query; // Get brand_name, product_type, and store_id from request query parameters
+  const { brand_name, product_type, store_id , product_name} = req.query; // Get brand_name, product_type, and store_id from request query parameters
 
   try {
     // Build dynamic conditions for brand_name and product_type
@@ -266,7 +267,10 @@ const getProductforMangerinventory = async (req, res) => {
       whereConditions.push(`products.product_type = ?`);
       queryParams.push(product_type);
     }
-
+    if (product_name && product_name !== "All") {
+      whereConditions.push(`products.product_name LIKE ?`);
+      queryParams.push(`%${product_name}%`);
+    }
     // Construct the WHERE clause dynamically
     const whereClause =
       whereConditions.length > 0
@@ -280,7 +284,8 @@ const getProductforMangerinventory = async (req, res) => {
       FROM products
       LEFT JOIN sales_items ON products.product_id = sales_items.product_id
       ${whereClause}
-      GROUP BY products.product_id LIMIT 50;`;
+      GROUP BY products.product_id
+      ORDER BY products.created_at DESC`;
 
     // Query products and IMEI numbers
     const [productRows] = await db.query(productQuery, queryParams);
@@ -290,9 +295,11 @@ const getProductforMangerinventory = async (req, res) => {
     const [storeRows] = await db.query(storeQuery, [store_id]);
     const storeName = storeRows.length > 0 ? storeRows[0].store_name : null;
 
+    const limitedProductRows = productRows.slice(0, 20);
+    
     // Process each product row and get stock quantity
     const processedRows = await Promise.all(
-      productRows.map(async (row) => {
+      limitedProductRows.map(async (row) => {
         const imeiArray = row.imei_numbers ? row.imei_numbers.split(",") : [];
 
         // Get stock quantity for the current product
@@ -331,7 +338,9 @@ const getProductModelsByBrandName = async (req, res) => {
     FROM products
     LEFT JOIN sales_items ON products.product_id = sales_items.product_id
     WHERE products.brand_name = ? AND products.product_type = ?
-    GROUP BY products.product_id;`;
+    GROUP BY products.product_id;
+    ORDER BY p.created_at DESC
+    `;
 
   try {
     const [rows] = await db.query(sql, [brand_name, product_type]);
@@ -350,7 +359,7 @@ const getProductModelsByBrandName = async (req, res) => {
     });
 
     // Return all product details with IMEI numbers as an array
-    return res.json(processedRows);
+
   } catch (err) {
     console.error("Error fetching products:", err.message);
     return res.status(500).json({ message: "Error inside server", err });

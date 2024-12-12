@@ -895,7 +895,9 @@ const getTransfersFromStore = async (req, res) => {
       FROM transfer t
       INNER JOIN products p ON t.product_id = p.product_id
       WHERE t.transfer_from = ?
-        AND t.transfer_approval = 'sending';
+        AND t.transfer_approval = 'sending'
+         ORDER BY p.created_at DESC
+        ;
     `;
 
     const [transfers] = await db.query(transferQuery, [storeName]);
@@ -932,7 +934,7 @@ const getTransfersFromStore = async (req, res) => {
     // Convert the grouped object into an array
     const result = Object.values(groupedTransfers);
 
-    return res.status(200).json(result);
+    return res.status(200).json(result.slice(0,10));
   } catch (err) {
     console.error("Error fetching transfers initiated by store:", err.message);
     return res
@@ -1355,8 +1357,11 @@ const getTransferDetails = async (req, res) => {
               transfer t
           LEFT JOIN 
               products p ON t.product_id = p.product_id
-          ORDER BY 
-              t.transfer_id, p.product_id;
+       ORDER BY 
+    t.transfer_date DESC, 
+    transfer_approval,
+    t.transfer_id, 
+    p.product_id;
       `;
 
     const [transfers] = await db.query(sql);
